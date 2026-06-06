@@ -6,6 +6,7 @@ import TriageQueue from './components/TriageQueue';
 import BlockDetail from './components/BlockDetail';
 import Legend from './components/Legend';
 import InspectedLog from './components/views/InspectedLog';
+import ResidentReports from './components/views/ResidentReports';
 import SettingsView from './components/views/SettingsView';
 import AccountView from './components/views/AccountView';
 import LoginScreen from './components/auth/LoginScreen';
@@ -100,6 +101,10 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
   // When set, the map recolors every dot by this breakdown factor (a temporary
   // single-score heatmap). Toggled from the block detail breakdown rows.
   const [heatmapFactor, setHeatmapFactor] = useState<string | null>(null);
+  // Building whose resident reports should open when navigating to that page.
+  // The token forces the effect to re-run even if the same block is chosen.
+  const [reportsFocusId, setReportsFocusId] = useState<string | null>(null);
+  const [reportsFocusToken, setReportsFocusToken] = useState(0);
 
   const toggleHeatmap = (label: string) =>
     setHeatmapFactor(cur => (cur === label ? null : label));
@@ -162,6 +167,15 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
     handleSelect(id);
   }
 
+  // From the block detail: switch to Resident Reports with this building open.
+  function showReportsForBlock(id: string) {
+    setReportsFocusId(id);
+    setReportsFocusToken(t => t + 1);
+    setView('resident-reports');
+    setSelectedId(null);
+    setHeatmapFactor(null);
+  }
+
   const isMap = view === 'risk-monitor';
 
   // Gate the whole dashboard behind a loading screen until ALL rows are in
@@ -205,6 +219,7 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
             onClose={() => setSelectedId(null)}
             heatmapFactor={heatmapFactor}
             onToggleHeatmap={toggleHeatmap}
+            onShowReports={showReportsForBlock}
           />
           <Legend triageOpen={triageOpen} />
           {heatmapFactor && (
@@ -217,6 +232,14 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
       )}
 
       {view === 'inspected-log' && <InspectedLog blocks={blocks} onJump={jumpToBlock} />}
+      {view === 'resident-reports' && (
+        <ResidentReports
+          blocks={blocks}
+          onJump={jumpToBlock}
+          focusBlockId={reportsFocusId}
+          focusToken={reportsFocusToken}
+        />
+      )}
       {view === 'settings'      && <SettingsView />}
       {view === 'account'       && <AccountView onSignOut={onSignOut} />}
 

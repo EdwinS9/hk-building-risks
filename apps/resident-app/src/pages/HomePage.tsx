@@ -1,6 +1,7 @@
-import { Building2, AlertTriangle, Settings } from 'lucide-react';
+import { Megaphone, Settings } from 'lucide-react';
 import type { Page } from '../types';
 import { getHomeBuilding } from '../lib/storage';
+import { BuildingDoodle, MegaphoneDoodle, ShieldDoodle } from '../components/Illustrations';
 
 interface Props {
   onNavigate: (page: Page) => void;
@@ -12,12 +13,14 @@ export default function HomePage({ onNavigate }: Props) {
   if (!home) {
     return (
       <div className="page center-content">
-        <Building2 size={56} className="muted-icon" />
-        <h2>No building selected</h2>
-        <p className="muted">Go to Settings to choose your home building.</p>
+        <BuildingDoodle size={150} />
+        <h2>Let's find your home</h2>
+        <p className="muted">
+          Pick the building you live in so your reports go to the right place.
+        </p>
         <button className="btn-primary" onClick={() => onNavigate('settings')}>
           <Settings size={18} />
-          Open Settings
+          Choose your building
         </button>
       </div>
     );
@@ -25,29 +28,29 @@ export default function HomePage({ onNavigate }: Props) {
 
   return (
     <div className="page">
-      <div className="home-header">
-        <Building2 size={32} />
-        <div>
-          <p className="label">Your building</p>
-          <h1 className="building-address">{home.address}</h1>
-          <p className="district">{home.district}</p>
-        </div>
+      <div className="hero">
+        <BuildingDoodle size={120} className="hero-illustration" />
+        <span className="eyebrow">Your building</span>
+        <h1 className="hero-address">{home.address}</h1>
+        <p className="hero-district">{home.district}</p>
       </div>
 
-      <div className="home-card">
+      <div className="action-card">
+        <MegaphoneDoodle size={92} className="doodle-corner" />
         <h2>See something wrong?</h2>
         <p>
-          Report structural cracks, water damage, dangerous corridors, or any
-          other issue in your building.
+          Spotted a structural crack, water damage, or a dangerous corridor?
+          Speak up — it takes less than a minute.
         </p>
         <button className="btn-primary" onClick={() => onNavigate('report')}>
-          <AlertTriangle size={18} />
+          <Megaphone size={18} />
           Submit a Report
         </button>
       </div>
 
       <p className="home-footnote">
-        Reports are reviewed by the Hong Kong Building Department. No personal
+        <ShieldDoodle size={34} />
+        Reports are reviewed by the Hong Kong Buildings Department. No personal
         information is collected.
       </p>
     </div>
