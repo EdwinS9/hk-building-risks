@@ -6,6 +6,7 @@ import TriageQueue from './components/TriageQueue';
 import BlockDetail from './components/BlockDetail';
 import Legend from './components/Legend';
 import InspectedLog from './components/views/InspectedLog';
+import ResidentReports from './components/views/ResidentReports';
 import SettingsView from './components/views/SettingsView';
 import AccountView from './components/views/AccountView';
 import LoginScreen from './components/auth/LoginScreen';
@@ -217,6 +218,7 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
       )}
 
       {view === 'inspected-log' && <InspectedLog blocks={blocks} onJump={jumpToBlock} />}
+      {view === 'resident-reports' && <ResidentReports blocks={blocks} onJump={jumpToBlock} />}
       {view === 'settings'      && <SettingsView />}
       {view === 'account'       && <AccountView onSignOut={onSignOut} />}
 
