@@ -1,6 +1,5 @@
 model/scored.csv
 model/building_features.csv
-model/height_features.csv
 model/building_footprints.geojson
 model/*.log
 insar/products/
