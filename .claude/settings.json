@@ -13,7 +13,8 @@
       "Bash(\"/Users/magnussaurbier/Library/Mobile Documents/iCloud~md~obsidian/Documents/Magnus/private-nonsensitive/projects/Hackathons/hk-building-risks/.venv/bin/pip\" install statsmodels -q)",
       "Bash(\"/Users/magnussaurbier/Library/Mobile Documents/iCloud~md~obsidian/Documents/Magnus/private-nonsensitive/projects/Hackathons/hk-building-risks/.venv/bin/python\" -m pip install statsmodels -q)",
       "Bash(\"/Users/magnussaurbier/Library/Mobile Documents/iCloud~md~obsidian/Documents/Magnus/private-nonsensitive/projects/Hackathons/hk-building-risks/.venv/bin/python\" -m ensurepip)",
-      "Bash(\"/Users/magnussaurbier/Library/Mobile Documents/iCloud~md~obsidian/Documents/Magnus/private-nonsensitive/projects/Hackathons/hk-building-risks/.venv/bin/python\" -c \"import statsmodels; print\\(statsmodels.__version__\\)\")"
+      "Bash(\"/Users/magnussaurbier/Library/Mobile Documents/iCloud~md~obsidian/Documents/Magnus/private-nonsensitive/projects/Hackathons/hk-building-risks/.venv/bin/python\" -c \"import statsmodels; print\\(statsmodels.__version__\\)\")",
+      "Bash(npm install *)"
     ]
   }
 }
