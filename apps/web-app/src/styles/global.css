@@ -2382,6 +2382,27 @@ input {
 .reports-link:hover .reports-link-chevron { color: var(--text-1); }
 
 /* ===== Resident Reports ===================================================== */
+.page-title-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.reports-archive-toggle.on {
+  border-color: var(--accent-dim);
+  background: rgba(110, 193, 255, 0.1);
+  color: var(--accent);
+}
+.archive-count {
+  margin-left: 2px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: var(--inset-bg);
+  border: 1px solid var(--border-faint);
+  font-size: 9px;
+  color: var(--text-1);
+}
+
 .reports-stats {
   margin-top: 12px;
   display: flex;

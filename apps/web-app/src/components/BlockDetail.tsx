@@ -142,7 +142,10 @@ function ReportsSection({
   const reports = useSyncExternalStore(subscribeReports, getReports, getReports);
   const status = useSyncExternalStore(subscribeReports, getReportsStatus, getReportsStatus);
   const openCount = useMemo(
-    () => reports.reduce((n, r) => (r.blockId === blockId && !r.solvedAt ? n + 1 : n), 0),
+    () => reports.reduce(
+      (n, r) => (r.blockId === blockId && !r.solvedAt && !r.archivedAt ? n + 1 : n),
+      0,
+    ),
     [reports, blockId],
   );
   const loading = status.loading && reports.length === 0;
