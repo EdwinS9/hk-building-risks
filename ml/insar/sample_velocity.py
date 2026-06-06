@@ -27,13 +27,33 @@ UNIT_SCALE = 1000.0   # MintPy velocity is m/yr; convert to mm/yr
 COH_FLOOR = 0.7       # below this, the velocity is unreliable (flagged, not dropped)
 
 
-def sample(raster_path, lons, lats):
+def sample(raster_path, lons, lats, zero_is_nodata=False):
+    """Nearest-pixel sample of a raster at lon/lat points (EPSG:4326).
+
+    Returns a float array with NaN wherever there is no usable measurement:
+      - points outside the raster footprint (the single-burst extent),
+      - the dataset nodata sentinel,
+      - and, when zero_is_nodata, MintPy's 0-fill on masked/incoherent pixels.
+    Keeping these NaN (instead of 0) is the whole point: downstream the model
+    must tell "no measurement" apart from "measured ~0 mm/yr (stable)". Filling
+    nodata with 0 made ~75% of buildings look perfectly stable, so the
+    insar_missing flag never fired and the median-impute never ran.
+    """
     import rasterio
     from pyproj import Transformer
     with rasterio.open(raster_path) as ds:
         tf = Transformer.from_crs("EPSG:4326", ds.crs, always_xy=True)
         xs, ys = tf.transform(lons, lats)
-        return [v[0] for v in ds.sample(zip(xs, ys))]
+        vals = np.array([v[0] for v in ds.sample(zip(xs, ys))], dtype=float)
+        xs, ys = np.asarray(xs), np.asarray(ys)
+        left, bottom, right, top = ds.bounds
+        outside = (xs < left) | (xs > right) | (ys < bottom) | (ys > top)
+        vals[outside] = np.nan
+        if ds.nodata is not None:
+            vals[vals == ds.nodata] = np.nan
+    if zero_is_nodata:
+        vals[vals == 0] = np.nan
+    return vals
 
 
 def main():
@@ -51,14 +71,18 @@ def main():
     lons, lats = df.LONGITUDE.tolist(), df.LATITUDE.tolist()
 
     out = pd.DataFrame({"OBJECTID": df.OBJECTID})
-    out["insar_velocity_mm_yr"] = [v * UNIT_SCALE for v in sample(args.velocity, lons, lats)]
+    # MintPy masks nodata to 0 in velocity/coherence (nodata sentinel unset), so
+    # treat 0 as missing; NaN * scale stays NaN, marking "no data" not "0 mm/yr".
+    out["insar_velocity_mm_yr"] = sample(args.velocity, lons, lats, zero_is_nodata=True) * UNIT_SCALE
     if args.coherence:
-        out["insar_coherence"] = sample(args.coherence, lons, lats)
+        out["insar_coherence"] = sample(args.coherence, lons, lats, zero_is_nodata=True)
+        # NaN coherence (no data) compares False, so it lands as not-reliable.
         out["insar_reliable"] = out["insar_coherence"] >= COH_FLOOR
 
     if args.incidence:
         # Single ascending track: vertical assumes purely vertical motion (see README).
-        ang = np.array(sample(args.incidence, lons, lats), dtype=float)
+        # incidenceAngle already carries NaN nodata; sample() adds the footprint mask.
+        ang = sample(args.incidence, lons, lats)
         if args.incidence_convention == "theta-rad":
             # HyP3 lv_theta = look-vector ELEVATION angle (rad) from horizontal;
             # incidence = pi/2 - theta, so cos(incidence) = sin(theta).

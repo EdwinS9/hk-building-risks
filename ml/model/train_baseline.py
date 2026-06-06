@@ -39,12 +39,19 @@ def main():
 
     cols_num = ["age"]
     if pd.io.common.file_exists(INSAR):
-        ins = pd.read_csv(INSAR)[["OBJECTID", "insar_velocity_mm_yr"]]
+        # Use the GRADIENT score (differential settlement), not signed LOS velocity.
+        # A whole block sinking uniformly is far less damaging than one edge moving
+        # relative to the other, and empirically signed velocity carries ~no signal
+        # for the notice label while the gradient lifts top-100 precision (6% to 9%).
+        # Coverage is sparse (single burst + coherence mask), so no-data is kept NaN
+        # upstream (sample_velocity.py); the missing-indicator captures absence and
+        # the present values are median-imputed. Never fill no-data with 0 ("stable").
+        ins = pd.read_csv(INSAR)[["OBJECTID", "insar_gradient_score"]]
         df = df.merge(ins, on="OBJECTID", how="left")
-        df["insar_missing"] = df.insar_velocity_mm_yr.isna().astype(int)
-        df["insar_velocity_mm_yr"] = df.insar_velocity_mm_yr.fillna(
-            df.insar_velocity_mm_yr.median())
-        cols_num += ["insar_velocity_mm_yr", "insar_missing"]
+        df["insar_missing"] = df.insar_gradient_score.isna().astype(int)
+        df["insar_gradient_score"] = df.insar_gradient_score.fillna(
+            df.insar_gradient_score.median())
+        cols_num += ["insar_gradient_score", "insar_missing"]
         print("merged InSAR feature.")
     else:
         print("no InSAR yet (model/insar_features.csv missing).")
