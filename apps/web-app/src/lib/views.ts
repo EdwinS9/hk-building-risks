@@ -1,6 +1,7 @@
 import {
   Map as MapIcon,
   ClipboardCheck,
+  MessageSquareWarning,
   Settings,
   UserCircle2,
   LogOut,
@@ -10,6 +11,7 @@ import {
 export type ViewKey =
   | 'risk-monitor'
   | 'inspected-log'
+  | 'resident-reports'
   | 'settings'
   | 'account'
   | 'logout';
@@ -25,6 +27,7 @@ export interface ViewDef {
 export const VIEWS: ViewDef[] = [
   { key: 'risk-monitor',  label: 'Risk Monitor',  icon: MapIcon,         group: 'main' },
   { key: 'inspected-log', label: 'Inspected Log', icon: ClipboardCheck,  group: 'main' },
+  { key: 'resident-reports', label: 'Resident Reports', icon: MessageSquareWarning, group: 'main' },
   { key: 'settings',      label: 'Settings',      icon: Settings,        group: 'system' },
   { key: 'account',       label: 'Account',       icon: UserCircle2,     group: 'system' },
   { key: 'logout',        label: 'Logout',        icon: LogOut,          group: 'system' },

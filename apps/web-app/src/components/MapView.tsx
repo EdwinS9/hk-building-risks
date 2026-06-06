@@ -417,6 +417,19 @@ export default function MapView(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme]);
 
+  // Keep the canvas in sync when the container is resized by something other
+  // than a window resize — e.g. dragging the Resident Reports split divider.
+  // maplibre only auto-tracks the window, so observe the element directly.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      mapRef.current?.resize();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // fly to selection
   useEffect(() => {
     const m = mapRef.current;
