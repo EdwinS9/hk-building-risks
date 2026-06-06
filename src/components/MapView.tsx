@@ -72,6 +72,25 @@ function applyHeatmapStyle(map: MLMap, factor: string | null) {
   }
 }
 
+// Fade the base building dots / clusters while a route is shown so the route
+// line and its numbered stops stand out. Paint changes animate with MapLibre's
+// default transition, so this cross-fades smoothly.
+function applyRouteFocus(map: MLMap, active: boolean, heatmapOn: boolean) {
+  if (map.getLayer('blocks-circle')) {
+    map.setPaintProperty('blocks-circle', 'circle-opacity', active ? 0.12 : 1);
+    map.setPaintProperty('blocks-circle', 'circle-stroke-opacity', active ? 0.12 : 1);
+  }
+  if (map.getLayer('clusters')) {
+    map.setPaintProperty('clusters', 'circle-opacity', active ? 0.12 : 0.78);
+  }
+  if (map.getLayer('cluster-count')) {
+    map.setPaintProperty('cluster-count', 'text-opacity', active ? 0.15 : 1);
+  }
+  if (map.getLayer('blocks-glow')) {
+    map.setLayoutProperty('blocks-glow', 'visibility', active || heatmapOn ? 'none' : 'visible');
+  }
+}
+
 // Per-block value (0..1) for the active heatmap factor, or -1 if unavailable.
 function heatValue(b: Block, factor: string | null): number {
   if (!factor) return -1;
@@ -126,6 +145,8 @@ export default function MapView(props: Props) {
   const route = props.route ?? null;
   const routeRef = useRef<RouteResult | null>(route);
   routeRef.current = route;
+  const routeActiveRef = useRef<boolean>(!!route);
+  routeActiveRef.current = !!route;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const loadedRef = useRef(false);
@@ -163,6 +184,7 @@ export default function MapView(props: Props) {
       pushSelected(map, selectedId ? blocks.find(b => b.id === selectedId) : null, heatmapFactorRef.current);
       applyHeatmapStyle(map, heatmapFactorRef.current);
       pushRoute(map, routeRef.current);
+      applyRouteFocus(map, !!routeRef.current, !!heatmapFactorRef.current);
       bindInteractions(map);
       startPulse();
     });
@@ -263,8 +285,9 @@ export default function MapView(props: Props) {
         }
 
         // ── Risk glow: only animate when it's actually on screen (zoomed out).
+        // Suppressed while a route is shown so the faded dots stay quiet.
         const z = m.getZoom();
-        if (z < 14.5 && m.getLayer('blocks-glow')) {
+        if (z < 14.5 && m.getLayer('blocks-glow') && !routeActiveRef.current) {
           // The glow is a tight HALO around the marker, not a fixed-size blob.
           const p = 1.5 + t * 3; // pulsing halo thickness in px
           m.setPaintProperty('blocks-glow', 'circle-radius', [
@@ -338,6 +361,7 @@ export default function MapView(props: Props) {
     applyFeatureStateDelta(m, prevHoveredRef, hoveredId, 'hovered');
     pushSelected(m, selectedId ? blocks.find(b => b.id === selectedId) : null, heatmapFactor);
     applyHeatmapStyle(m, heatmapFactor);
+    applyRouteFocus(m, !!routeRef.current, !!heatmapFactor);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [heatmapFactor]);
 
@@ -352,6 +376,7 @@ export default function MapView(props: Props) {
     const m = mapRef.current;
     if (!m || !loadedRef.current) return;
     pushRoute(m, route);
+    applyRouteFocus(m, !!route, !!heatmapFactor);
     if (route && route.line.length > 1) {
       const lngs = route.line.map(c => c[0]);
       const lats = route.line.map(c => c[1]);
@@ -381,6 +406,7 @@ export default function MapView(props: Props) {
       pushSelected(m, selectedId ? blocks.find(b => b.id === selectedId) : null, heatmapFactorRef.current);
       applyHeatmapStyle(m, heatmapFactorRef.current);
       pushRoute(m, routeRef.current);
+      applyRouteFocus(m, !!routeRef.current, !!heatmapFactorRef.current);
     };
     m.once('style.load', onStyle);
     return () => { m.off('style.load', onStyle); };

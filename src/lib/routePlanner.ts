@@ -78,6 +78,10 @@ export interface RouteResult {
   candidatePool: number;  // how many buildings were considered
   /** [lng, lat] path: depot -> stops -> depot, for a map line layer. */
   line: [number, number][];
+  /** True once `line` follows real roads (via OSRM) rather than straight legs. */
+  roads: boolean;
+  /** Driving distance in km (real once `roads` is true, else straight-line est). */
+  distanceKm: number;
 }
 
 // ─── Geometry ──────────────────────────────────────────────────────────────
@@ -368,6 +372,80 @@ export function planRoute(
     startMin: opts.startMin,
     candidatePool: pool.length,
     line,
+    roads: false,
+    distanceKm: (drive * opts.speedKmh) / 60, // straight-line estimate
+  };
+}
+
+// ─── Real-road geometry (OSRM) ───────────────────────────────────────────────
+// The planner selects and orders stops offline (haversine). This upgrades the
+// drawn path to follow actual streets and replaces the estimated drive time
+// with OSRM's real value. Falls back gracefully (returns the input route) when
+// OSRM is unreachable, so the feature still works offline.
+// Optional chaining keeps this safe under non-Vite runtimes (e.g. Node tests),
+// where import.meta.env is undefined.
+const OSRM_URL = import.meta.env?.VITE_OSRM_URL || 'https://router.project-osrm.org';
+
+interface RoadRoute {
+  geometry: [number, number][]; // [lng, lat]
+  durationMin: number;
+  distanceKm: number;
+  legMin: number[]; // per-leg driving minutes (depot->s1, s1->s2, ..., sn->depot)
+}
+
+async function fetchRoadRoute(coords: [number, number][], baseUrl: string): Promise<RoadRoute | null> {
+  try {
+    const path = coords.map(c => `${c[0]},${c[1]}`).join(';');
+    const url = `${baseUrl}/route/v1/driving/${path}?overview=full&geometries=geojson&steps=false`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const r = data?.routes?.[0];
+    if (!r?.geometry?.coordinates?.length) return null;
+    return {
+      geometry: r.geometry.coordinates as [number, number][],
+      durationMin: r.duration / 60,
+      distanceKm: r.distance / 1000,
+      legMin: ((r.legs ?? []) as { duration: number }[]).map(l => l.duration / 60),
+    };
+  } catch {
+    return null; // offline, CORS, rate limit, etc. -> caller keeps straight line
+  }
+}
+
+/**
+ * Return a copy of `route` whose path follows real roads and whose drive times
+ * come from OSRM. If OSRM is unreachable the original route is returned
+ * unchanged (still a valid straight-line plan).
+ */
+export async function attachRoadGeometry(route: RouteResult, baseUrl = OSRM_URL): Promise<RouteResult> {
+  if (route.stops.length === 0) return route;
+  const coords: [number, number][] = [
+    [route.depot.lng, route.depot.lat],
+    ...route.stops.map(s => [s.block.coordinate.lng, s.block.coordinate.lat] as [number, number]),
+    [route.depot.lng, route.depot.lat],
+  ];
+  const road = await fetchRoadRoute(coords, baseUrl);
+  if (!road) return route;
+
+  const perStopService = route.serviceMin / route.stops.length;
+  let clock = route.startMin;
+  const stops: RouteStop[] = route.stops.map((s, i) => {
+    const driveMin = road.legMin[i] ?? s.driveMin;
+    clock += driveMin;
+    const arriveMin = clock;
+    clock += perStopService;
+    return { ...s, driveMin, arriveMin, departMin: clock };
+  });
+
+  return {
+    ...route,
+    stops,
+    driveMin: road.durationMin,
+    totalMin: road.durationMin + route.serviceMin,
+    line: road.geometry,
+    roads: true,
+    distanceKm: road.distanceKm,
   };
 }
 

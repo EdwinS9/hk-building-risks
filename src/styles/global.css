@@ -1532,6 +1532,8 @@ input {
 }
 .route-time-split { font-size: 11px; color: var(--text-1); margin-top: 2px; }
 .route-meta { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+.route-roads { color: var(--accent); }
+.route-est { font-style: italic; opacity: 0.8; }
 
 .route-stops {
   flex: 1;

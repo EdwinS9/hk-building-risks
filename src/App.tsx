@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore, useMemo } from 'react';
+import { useEffect, useState, useSyncExternalStore, useMemo, useRef } from 'react';
 import MapView from './components/MapView';
 import TopBar from './components/TopBar';
 import NavSidebar from './components/NavSidebar';
@@ -19,7 +19,7 @@ import type { RiskBand } from './lib/constants';
 import { getAuth, subscribeAuth, initAuth, signOut } from './lib/auth';
 import { initDbStatus } from './lib/dbStatus';
 import type { ViewKey } from './lib/views';
-import { planRoute, type RouteResult } from './lib/routePlanner';
+import { planRoute, attachRoadGeometry, type RouteResult } from './lib/routePlanner';
 
 export default function App() {
   const auth = useSyncExternalStore(subscribeAuth, getAuth, getAuth);
@@ -112,10 +112,20 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
   // District the current route/empty-result was computed for (drives the panel's
   // "no candidates" message vs. the initial hint).
   const [routeDistrict, setRouteDistrict] = useState<string | null>(null);
+  // Guards against a stale OSRM response overwriting a newer plan.
+  const planSeqRef = useRef(0);
 
   const handlePlanRoute = (district: string) => {
     setRouteDistrict(district);
-    setRoute(planRoute(blocks, district));
+    const base = planRoute(blocks, district);
+    setRoute(base); // show the straight-line plan instantly
+    const seq = ++planSeqRef.current;
+    if (base) {
+      // Upgrade to a real-road path + real drive time in the background.
+      void attachRoadGeometry(base).then(upgraded => {
+        if (planSeqRef.current === seq) setRoute(upgraded);
+      });
+    }
   };
 
   // Band/status filters are lifted here so they drive BOTH the triage list

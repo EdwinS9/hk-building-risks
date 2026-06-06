@@ -81,8 +81,13 @@ export default function RoutePanel({ open, blocks, route, plannedDistrict, onClo
               {formatDuration(route!.driveMin)} driving + {formatDuration(route!.serviceMin)} inspecting
             </div>
             <div className="route-meta">
-              {route!.stops.length} stops · risk {Math.round(route!.prize)} ·
-              {' '}{formatClock(route!.startMin)} to {formatClock(endMin)}
+              {route!.stops.length} stops · {route!.distanceKm.toFixed(1)} km · risk {Math.round(route!.prize)}
+            </div>
+            <div className="route-meta">
+              {formatClock(route!.startMin)} to {formatClock(endMin)}
+              {route!.roads
+                ? <span className="route-roads"> · via roads</span>
+                : <span className="route-est"> · estimating roads…</span>}
             </div>
           </div>
 
