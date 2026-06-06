@@ -8,7 +8,12 @@
       "Bash(uv add *)",
       "Bash(git fetch *)",
       "Bash(git restore *)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(python3 -c \"import sys,json; nb=json.load\\(open\\('/Users/magnussaurbier/Library/Mobile Documents/iCloud~md~obsidian/Documents/Magnus/private-nonsensitive/projects/Hackathons/hk-building-risks/Data Analysis/exploration.ipynb'\\)\\); print\\([c['source'][:1] for c in nb['cells'][:3]]\\)\")",
+      "Bash(\"/Users/magnussaurbier/Library/Mobile Documents/iCloud~md~obsidian/Documents/Magnus/private-nonsensitive/projects/Hackathons/hk-building-risks/.venv/bin/pip\" install statsmodels -q)",
+      "Bash(\"/Users/magnussaurbier/Library/Mobile Documents/iCloud~md~obsidian/Documents/Magnus/private-nonsensitive/projects/Hackathons/hk-building-risks/.venv/bin/python\" -m pip install statsmodels -q)",
+      "Bash(\"/Users/magnussaurbier/Library/Mobile Documents/iCloud~md~obsidian/Documents/Magnus/private-nonsensitive/projects/Hackathons/hk-building-risks/.venv/bin/python\" -m ensurepip)",
+      "Bash(\"/Users/magnussaurbier/Library/Mobile Documents/iCloud~md~obsidian/Documents/Magnus/private-nonsensitive/projects/Hackathons/hk-building-risks/.venv/bin/python\" -c \"import statsmodels; print\\(statsmodels.__version__\\)\")"
     ]
   }
 }

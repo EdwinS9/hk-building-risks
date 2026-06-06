@@ -24,7 +24,9 @@ The mandated annual load is essentially deterministic:
 
 **Realized inspection throughput (actual completions):**
 
-- **2019: ~7,400 building-inspection certificates** submitted by RIs to BD (of which 3,860 = 52% — the figure Audit sampled), vs. only **~607 building-repair certificates** the same year. Inspections completed far outpace completed repairs (the repair stage is the deeper bottleneck — owner cost/consent).
+- **2019: ~7,400 building-inspection certificates** submitted by RIs to BD (of which 3,860 = 52% — the figure Audit sampled), vs. only **~607 building-repair certificates** the same year.
+- ⚠️ **Caveat — do not over-read this ratio.** 607 vs ~7,400 is *not* by itself evidence of repair underperformance, for two reasons: (1) **not every inspection prescribes repairs** — the correct denominator is buildings actually *ordered* to repair, not all buildings inspected; (2) it compares **two flows in one calendar year, not a cohort** — repairs follow inspections by months-to-years, so repair certs always lag in any single year even if everything is eventually fixed. A valid measure tracks a cohort: of buildings ordered to repair in year X, what % completed within the statutory window.
+- The conclusion that **repair compliance is the tighter constraint still holds**, but on *independent* evidence — notices outstanding **5+ years**, owner cost/consent friction (rationale for subsidy schemes like MBISS), and reporting of aged buildings left un-repaired despite orders — with the 607 figure as a loose corroborator only.
 - The realized inspection rate (~7k/yr in 2019) **exceeds the ~2,000 annual selection target** because it includes catch-up on notices served in prior years; it is still short of fully clearing the standing backlog within one 10-year cycle.
 - Rough reconciliation: legal requirement ≈ **2,500/yr** (30+ pool ÷ 10) · selection target ≈ **2,000/yr** · realized inspection completions ≈ **7,000/yr (2019)** · realized repairs ≈ **600/yr (2019)**.
 
