@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, CalendarCheck, CheckCircle2, AlertTriangle, Clock4, Info } from 'lucide-react';
+import { X, CalendarCheck, CheckCircle2, Clock4, Info, StickyNote, Save, Loader2 } from 'lucide-react';
 import type { Block } from '../data/blocks';
-import { colorForBand, isStale, relativeTime, STALE_THRESHOLD_DAYS } from '../lib/constants';
-import { updateBlockStatus } from '../data/blocks';
+import { colorForBand, relativeTime } from '../lib/constants';
+import { updateBlockStatus, setBlockNote } from '../data/blocks';
 
 interface Props {
   block: Block | null;
@@ -33,7 +33,6 @@ export default function BlockDetail({ block, onClose }: Props) {
   }
 
   const color = colorForBand(b.riskBand);
-  const stale = isStale(b.scoreUpdatedAt);
 
   return (
     <aside
@@ -63,11 +62,6 @@ export default function BlockDetail({ block, onClose }: Props) {
           <div className="score-freshness">
             <Clock4 size={11} />
             <span>computed {relativeTime(b.scoreUpdatedAt)}</span>
-            {stale && (
-              <span className="stale-tag" title={`Older than ${STALE_THRESHOLD_DAYS} days`}>
-                <AlertTriangle size={10} /> STALE — may not reflect latest data
-              </span>
-            )}
           </div>
         </div>
 
@@ -110,6 +104,8 @@ export default function BlockDetail({ block, onClose }: Props) {
           </div>
         </div>
 
+        <NotesSection block={b} />
+
         <div className="section actions">
           <button
             className="action-btn"
@@ -136,5 +132,73 @@ export default function BlockDetail({ block, onClose }: Props) {
         </div>
       </div>
     </aside>
+  );
+}
+
+function NotesSection({ block }: { block: Block }) {
+  const saved = block.note ?? '';
+  const [draft, setDraft] = useState(saved);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Re-sync the editor whenever we switch blocks OR the shared note changes
+  // underneath us (another user saved). We only clobber the draft when the
+  // user hasn't started editing this block's note, to avoid eating keystrokes.
+  const blockId = block.id;
+  const lastSyncedRef = useRef<{ id: string; note: string }>({ id: blockId, note: saved });
+  useEffect(() => {
+    const prev = lastSyncedRef.current;
+    const blockChanged = prev.id !== blockId;
+    const remoteChanged = prev.note !== saved;
+    if (blockChanged || remoteChanged) {
+      setDraft(saved);
+      setError(null);
+      lastSyncedRef.current = { id: blockId, note: saved };
+    }
+  }, [blockId, saved]);
+
+  const dirty = draft !== saved;
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      await setBlockNote(blockId, draft);
+      // refreshOne updates block.note; the sync effect above realigns lastSynced.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save note');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="section notes-section">
+      <div className="section-label notes-label">
+        <span><StickyNote size={11} /> SHARED NOTES</span>
+        {block.noteUpdatedAt && !dirty && (
+          <span className="notes-meta mono">updated {relativeTime(block.noteUpdatedAt)}</span>
+        )}
+      </div>
+      <textarea
+        className="notes-input"
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        placeholder="Add a note for this block. Visible to and editable by everyone with access."
+        rows={3}
+        disabled={saving}
+      />
+      <div className="notes-foot">
+        <span className={`notes-hint ${error ? 'is-error' : ''}`}>{error ? error : 'Saved globally · last writer wins'}</span>
+        <button
+          className="action-btn notes-save"
+          disabled={!dirty || saving}
+          onClick={save}
+        >
+          {saving ? <Loader2 size={13} className="spin" /> : <Save size={13} />}
+          {saving ? 'Saving…' : 'Save note'}
+        </button>
+      </div>
+    </div>
   );
 }

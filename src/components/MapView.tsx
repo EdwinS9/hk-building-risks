@@ -61,6 +61,8 @@ export default function MapView(props: Props) {
   const rafRef = useRef<number | null>(null);
   const prevSelectedRef = useRef<string | null>(null);
   const prevHoveredRef = useRef<string | null>(null);
+  const selectedIdRef = useRef<string | null>(selectedId);
+  selectedIdRef.current = selectedId;
   const theme = useSyncExternalStore(subscribeTheme, getResolvedTheme, getResolvedTheme);
   const themeRef = useRef(theme);
   themeRef.current = theme;
@@ -143,14 +145,44 @@ export default function MapView(props: Props) {
     }
 
     function startPulse() {
-      const tick = () => {
-        pulsePhaseRef.current = (pulsePhaseRef.current + 0.05) % (Math.PI * 2);
+      let lastPaint = 0;
+      const tick = (now: number) => {
+        rafRef.current = requestAnimationFrame(tick);
         const m = mapRef.current;
-        if (m && loadedRef.current && m.getLayer('blocks-glow')) {
-          const t = (Math.sin(pulsePhaseRef.current) + 1) / 2;
+        if (!m || !loadedRef.current) return;
+
+        // Mutating paint properties recompiles the expression and forces a full
+        // repaint — doing that every frame, and especially *during* a pan/zoom,
+        // was the main source of map + UI lag. So we skip entirely while the
+        // map is moving (smooth gestures) and throttle to ~15fps.
+        if (m.isMoving()) return;
+        if (now - lastPaint < 66) return;
+        lastPaint = now;
+
+        pulsePhaseRef.current = (pulsePhaseRef.current + 0.18) % (Math.PI * 2);
+        const t = (Math.sin(pulsePhaseRef.current) + 1) / 2;
+
+        // ── Selected-block highlight: a breathing accent ring around the dot.
+        // Runs at any zoom while a block is selected (detail panel open).
+        if (selectedIdRef.current && m.getLayer('blocks-selected-ring')) {
+          const sel: maplibregl.ExpressionSpecification = ['boolean', ['feature-state', 'selected'], false];
+          const amp = 4 + t * 5; // ring grows/shrinks
+          // Top-level zoom interpolate; branch on selection inside each stop.
+          m.setPaintProperty('blocks-selected-ring', 'circle-radius', [
+            'interpolate', ['linear'], ['zoom'],
+            10, ['case', sel, 7 + amp, 0],
+            14, ['case', sel, 11 + amp, 0],
+            18, ['case', sel, 16 + amp, 0],
+          ]);
+          m.setPaintProperty('blocks-selected-ring', 'circle-stroke-opacity', [
+            'case', sel, 0.4 + t * 0.5, 0,
+          ]);
+        }
+
+        // ── Risk glow: only animate when it's actually on screen (zoomed out).
+        const z = m.getZoom();
+        if (z < 14.5 && m.getLayer('blocks-glow')) {
           // The glow is a tight HALO around the marker, not a fixed-size blob.
-          // It tracks the marker's zoom-interpolated radius + a small pulsing
-          // offset, so zoomed in it stays a small point instead of a "cloud".
           const p = 1.5 + t * 3; // pulsing halo thickness in px
           m.setPaintProperty('blocks-glow', 'circle-radius', [
             'interpolate', ['linear'], ['zoom'],
@@ -158,26 +190,20 @@ export default function MapView(props: Props) {
             13, 4.5 + p * 1.1,
             15, 6 + p * 1.2,
           ]);
-          const base = 0.22 + t * 0.22;
+          // Fade the glow out as you zoom in. We already know the current zoom,
+          // so bake the fade as a constant — a `zoom` interpolate can't be
+          // nested under "*", and this avoids that restriction entirely.
+          const fade = z <= 13 ? 1 : (14.5 - z) / 1.5;
+          const base = (0.22 + t * 0.22) * fade;
           const critical = base;
           const high = base * 0.7;
-          // Fade the glow out as you zoom in. Past ~z14 it would just stack
-          // into translucent "clouds" over dense points — so kill it there and
-          // let the clean solid dots stand alone for inspection/clicking.
           m.setPaintProperty('blocks-glow', 'circle-opacity', [
-            '*',
-            ['case',
-              ['>=', ['get', 'score'], 90], critical,
-              ['>=', ['get', 'score'], 70], high,
-              0,
-            ],
-            ['interpolate', ['linear'], ['zoom'],
-              13, 1,
-              14.5, 0,
-            ],
+            'case',
+            ['>=', ['get', 'score'], 90], critical,
+            ['>=', ['get', 'score'], 70], high,
+            0,
           ]);
         }
-        rafRef.current = requestAnimationFrame(tick);
       };
       rafRef.current = requestAnimationFrame(tick);
     }
@@ -198,7 +224,11 @@ export default function MapView(props: Props) {
     const m = mapRef.current;
     if (!m || !loadedRef.current) return;
     pushData(m, blocks);
-    // Reapply current selection/hover state after a fresh data push.
+    // setData clears feature-state, so reset the delta refs and reapply the
+    // current selection/hover from scratch — otherwise the highlight is lost
+    // whenever the filtered point set changes.
+    prevSelectedRef.current = null;
+    prevHoveredRef.current = null;
     applyFeatureStateDelta(m, prevSelectedRef, selectedId, 'selected');
     applyFeatureStateDelta(m, prevHoveredRef, hoveredId, 'hovered');
   }, [blocks]);
@@ -267,6 +297,11 @@ function setupLayers(map: MLMap) {
   map.addSource('blocks', {
     type: 'geojson',
     data: { type: 'FeatureCollection', features: [] },
+    // CRITICAL: clustering strips the top-level feature `id` from leaf points,
+    // which silently breaks ALL feature-state (selected + hovered highlights).
+    // promoteId rebuilds each leaf's id from its `id` property, so
+    // setFeatureState({ id }) actually binds to the rendered dot again.
+    promoteId: 'id',
     cluster: true,
     clusterRadius: 38,
     clusterMaxZoom: 13,
@@ -353,8 +388,36 @@ function setupLayers(map: MLMap) {
     },
   });
 
-  // Main marker — radius shrunk roughly in half. Selected feature gets a
-  // bump so it stays prominent.
+  // ---------- Selected-block highlight ring ----------
+  // A hollow accent ring sitting *under* the dot. It's invisible unless the
+  // feature is selected (feature-state driven), and the pulse loop animates it
+  // into a soft "breathing" halo so the chosen block is unmistakable while the
+  // detail panel is open. Feature-state can't be used in layer filters, so we
+  // render it for every point and gate visibility purely through paint.
+  const ringSel: maplibregl.ExpressionSpecification = ['boolean', ['feature-state', 'selected'], false];
+  map.addLayer({
+    id: 'blocks-selected-ring',
+    type: 'circle',
+    source: 'blocks',
+    filter: ['!', ['has', 'point_count']],
+    paint: {
+      'circle-color': 'rgba(0,0,0,0)', // ring only — no fill
+      // Top-level zoom interpolate (required); branch on selection per-stop so
+      // the ring collapses to radius 0 when the point isn't selected.
+      'circle-radius': [
+        'interpolate', ['linear'], ['zoom'],
+        10, ['case', ringSel, 9, 0],
+        14, ['case', ringSel, 13, 0],
+        18, ['case', ringSel, 19, 0],
+      ],
+      'circle-stroke-color': '#6EC1FF',
+      'circle-stroke-width': ['case', ringSel, 2.5, 0],
+      'circle-stroke-opacity': ['case', ringSel, 0.85, 0],
+    },
+  });
+
+  // Main marker — compact dots for usability. Selected feature gets a small
+  // bump (and the ring above) so it stays prominent without crowding.
   map.addLayer({
     id: 'blocks-circle',
     type: 'circle',
@@ -362,26 +425,25 @@ function setupLayers(map: MLMap) {
     filter: ['!', ['has', 'point_count']],
     paint: {
       'circle-color': bandColorExpr,
+      // IMPORTANT: MapLibre allows only ONE zoom-based interpolate per
+      // property. A `case` wrapping two separate zoom interpolates (selected
+      // vs not) is rejected and the WHOLE layer fails to load — which is why
+      // individual points vanished above the cluster zoom. Keep a single
+      // zoom interpolate and branch on selection inside each stop's output.
+      // Explicit high-zoom stops keep dots visible once clusters break apart.
       'circle-radius': [
-        'case',
-        ['boolean', ['feature-state', 'selected'], false],
-        [
-          'interpolate', ['linear'], ['zoom'],
-          10, 4.5,
-          13, 6,
-          16, 8,
-        ],
-        [
-          'interpolate', ['linear'], ['zoom'],
-          10, 2.2,
-          13, 3.2,
-          16, 5,
-        ],
+        'interpolate', ['linear'], ['zoom'],
+        10, ['case', ['boolean', ['feature-state', 'selected'], false], 4, 2],
+        13, ['case', ['boolean', ['feature-state', 'selected'], false], 5, 2.8],
+        16, ['case', ['boolean', ['feature-state', 'selected'], false], 7.5, 5],
+        20, ['case', ['boolean', ['feature-state', 'selected'], false], 11, 8],
       ],
-      'circle-stroke-color': '#ffffff',
+      'circle-stroke-color': [
+        'case', ['boolean', ['feature-state', 'selected'], false], '#6EC1FF', '#ffffff',
+      ],
       'circle-stroke-width': [
         'case',
-        ['boolean', ['feature-state', 'selected'], false], 2,
+        ['boolean', ['feature-state', 'selected'], false], 2.5,
         ['boolean', ['feature-state', 'hovered'], false], 1.2,
         0.6,
       ],

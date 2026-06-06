@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { X, Check, Lock } from 'lucide-react';
 import { VIEWS, type ViewKey, type ViewDef } from '../lib/views';
+import { getDbStatus, subscribeDbStatus } from '../lib/dbStatus';
 
 interface Props {
   open: boolean;
@@ -46,8 +47,7 @@ export default function NavSidebar({ open, view, onView, onClose }: Props) {
       >
         <div className="nav-header">
           <div className="nav-brand">
-            <div className="nav-brand-title">HK BRM</div>
-            <div className="nav-brand-sub">RISK INTEL · v0.1</div>
+            <div className="nav-brand-title">Menu</div>
           </div>
           <button className="icon-btn" onClick={onClose} title="Close menu">
             <X size={14} />
@@ -70,15 +70,33 @@ export default function NavSidebar({ open, view, onView, onClose }: Props) {
           </div>
         </div>
 
-        <div className="nav-foot">
-          <div className="nav-foot-row">
-            <span className="nav-dot" />
-            <span>System operational</span>
-          </div>
-          <div className="nav-foot-row dim">Prototype — mock data only</div>
-        </div>
+        <DbStatusFoot />
       </aside>
     </>
+  );
+}
+
+function DbStatusFoot() {
+  const status = useSyncExternalStore(subscribeDbStatus, getDbStatus, getDbStatus);
+
+  const label =
+    status.state === 'connected' ? 'Database connected'
+    : status.state === 'error'   ? 'Database unreachable'
+    : 'Connecting to database…';
+
+  const detail =
+    status.state === 'connected' ? `Live data · ${status.latencyMs ?? '—'} ms`
+    : status.state === 'error'   ? (status.error ?? 'Connection failed')
+    : 'Checking connection…';
+
+  return (
+    <div className="nav-foot">
+      <div className="nav-foot-row">
+        <span className={`nav-dot db-${status.state}`} />
+        <span>{label}</span>
+      </div>
+      <div className="nav-foot-row dim">{detail}</div>
+    </div>
   );
 }
 

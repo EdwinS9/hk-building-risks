@@ -32,6 +32,6 @@ export const VIEWS: ViewDef[] = [
   { key: 'schedule',      label: 'Schedule',      icon: CalendarClock,   group: 'main' },
   { key: 'data',          label: 'Data',          icon: Database,        group: 'main' },
   { key: 'settings',      label: 'Settings',      icon: Settings,        group: 'system' },
-  { key: 'account',       label: 'Account',       icon: UserCircle2,     group: 'system', comingSoon: true },
+  { key: 'account',       label: 'Account',       icon: UserCircle2,     group: 'system' },
   { key: 'logout',        label: 'Logout',        icon: LogOut,          group: 'system' },
 ];

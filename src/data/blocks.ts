@@ -9,6 +9,9 @@ import { bandForScore, type RiskBand } from '../lib/constants';
 
 export type BlockStatus = 'Not scheduled' | 'Scheduled' | 'Inspected';
 
+// Status filter order for the triage queue chips.
+export const BLOCK_STATUSES: BlockStatus[] = ['Not scheduled', 'Scheduled', 'Inspected'];
+
 export interface RiskFactor {
   label: string;
   contribution: number;
@@ -25,6 +28,9 @@ export interface Block {
   factors?: RiskFactor[];
   lastInspected: string | null;
   status: BlockStatus;
+  /** Shared free-text note. Editable by any authenticated user. */
+  note: string | null;
+  noteUpdatedAt: string | null;
 }
 
 // ─── In-memory cache (single source of truth for the UI) ───────────────────
@@ -32,6 +38,12 @@ export interface Block {
 // id so getBlockById is O(1), and we never copy the whole array on hover /
 // selection (those flow through React state, not through this store).
 let _blocks: Block[] = [];
+// Snapshot handed to consumers. `_blocks` is mutated in place while loading
+// (cheap), but useSyncExternalStore + downstream useMemo detect change via
+// reference identity — so we MUST publish a fresh reference on every emit,
+// otherwise React never re-derives from freshly loaded rows and the UI stays
+// empty until some unrelated state change forces a recompute.
+let _snapshot: Block[] = [];
 let _byId = new Map<string, Block>();
 let _loaded = false;
 let _loadPromise: Promise<void> | null = null;
@@ -55,9 +67,15 @@ function refreshProgress() {
 
 const listeners = new Set<() => void>();
 
-function emit() { listeners.forEach(l => l()); }
+function emit() {
+  // Publish a new reference so useSyncExternalStore sees the change. This runs
+  // only on emit (a handful of times per load / per mutation), not per row, so
+  // the in-place ingest stays cheap while consumers still react to new data.
+  _snapshot = _blocks.slice();
+  listeners.forEach(l => l());
+}
 
-export function getBlocks(): Block[] { return _blocks; }
+export function getBlocks(): Block[] { return _snapshot; }
 export function getBlockById(id: string): Block | undefined { return _byId.get(id); }
 export function getLoadProgress(): LoadProgress { return _progress; }
 export function subscribe(listener: () => void): () => void {
@@ -79,6 +97,8 @@ interface BlockRow {
   risk_score_updated_at: string;
   last_inspected: string | null;
   status: string;
+  note: string | null;
+  note_updated_at: string | null;
 }
 
 interface ScoreRow {
@@ -104,6 +124,8 @@ function rowToBlock(row: BlockRow, factors?: RiskFactor[]): Block {
     factors,
     lastInspected: row.last_inspected,
     status: (row.status as BlockStatus) ?? 'Not scheduled',
+    note: row.note ?? null,
+    noteUpdatedAt: row.note_updated_at ?? null,
   };
 }
 
@@ -113,7 +135,7 @@ function rowToBlock(row: BlockRow, factors?: RiskFactor[]): Block {
 const PAGE_SIZE = 5000;
 
 const BLOCK_COLUMNS =
-  'id, object_id, address, district, latitude, longitude, risk_score, risk_score_updated_at, last_inspected, status';
+  'id, object_id, address, district, latitude, longitude, risk_score, risk_score_updated_at, last_inspected, status, note, note_updated_at';
 
 export async function loadBlocks(): Promise<void> {
   // De-dupe concurrent loads.
@@ -300,9 +322,7 @@ async function refreshOne(blockId: string): Promise<void> {
   const [bRes, sRes] = await Promise.all([
     supabase
       .from('blocks_with_status')
-      .select(
-        'id, object_id, address, district, latitude, longitude, risk_score, risk_score_updated_at, last_inspected, status',
-      )
+      .select(BLOCK_COLUMNS)
       .eq('id', blockId)
       .single(),
     supabase
@@ -352,6 +372,12 @@ export async function updateBlockStatus(id: string, status: BlockStatus): Promis
 }
 
 export async function setBlockNote(id: string, note: string): Promise<void> {
-  const { error } = await supabase.from('blocks').update({ note }).eq('id', id);
+  // Store empty input as NULL so "no note" is unambiguous. note_updated_by /
+  // note_updated_at are stamped server-side by a trigger.
+  const value = note.trim() === '' ? null : note;
+  const { error } = await supabase.from('blocks').update({ note: value }).eq('id', id);
   if (error) throw error;
+  // Refetch the affected block so the freshly-stamped note + timestamp flow
+  // back into the cache and every open view re-renders.
+  await refreshOne(id);
 }

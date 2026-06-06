@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { Activity, AlertTriangle, ShieldAlert, ClipboardList, Menu } from 'lucide-react';
+import { AlertTriangle, ShieldAlert, ClipboardList, Menu } from 'lucide-react';
 import type { Block } from '../data/blocks';
 import { VIEWS, type ViewKey } from '../lib/views';
 
@@ -11,19 +10,10 @@ interface Props {
 }
 
 export default function TopBar({ blocks, view, navOpen, onMenuToggle }: Props) {
-  const [now, setNow] = useState(new Date());
-
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-
   const total = blocks.length;
   const critical = blocks.filter(b => b.riskBand === 'Critical').length;
   const high = blocks.filter(b => b.riskBand === 'High').length;
-  const awaiting = blocks.filter(b => b.status !== 'Inspected').length;
 
-  const clock = now.toISOString().slice(11, 19) + ' UTC';
   const current = VIEWS.find(v => v.key === view) ?? VIEWS[0];
 
   return (
@@ -53,11 +43,6 @@ export default function TopBar({ blocks, view, navOpen, onMenuToggle }: Props) {
         <Stat icon={<ClipboardList size={12} />} label="Blocks"   value={total}    tone="neutral"  />
         <Stat icon={<ShieldAlert size={12} />}   label="Critical" value={critical} tone="critical" share={total ? critical / total : 0} />
         <Stat icon={<AlertTriangle size={12} />} label="High"     value={high}     tone="high"     share={total ? high / total : 0} />
-        <Stat icon={<Activity size={12} />}      label="Awaiting" value={awaiting} tone="awaiting" share={total ? awaiting / total : 0} />
-      </div>
-
-      <div className="topbar-right">
-        <div className="clock">{clock}</div>
       </div>
     </header>
   );

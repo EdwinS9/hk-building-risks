@@ -3,9 +3,10 @@ export const HK_DEFAULT_ZOOM = 11.5;
 export const HK_DEFAULT_PITCH = 0;
 export const HK_DEFAULT_BEARING = 0;
 
-export const STALE_THRESHOLD_DAYS = 14;
-
 export type RiskBand = 'Low' | 'Moderate' | 'High' | 'Critical';
+
+// Display order for band filters / chips (worst first).
+export const BAND_ORDER: RiskBand[] = ['Critical', 'High', 'Moderate', 'Low'];
 
 export const RISK_BANDS: { band: RiskBand; min: number; max: number; color: string; glow: string }[] = [
   { band: 'Low',      min: 0,  max: 39,  color: '#3FB6B0', glow: 'rgba(63, 182, 176, 0.45)' },
@@ -27,12 +28,6 @@ export function colorForBand(band: RiskBand): string {
 
 export function colorForScore(score: number): string {
   return colorForBand(bandForScore(score));
-}
-
-export function isStale(scoreUpdatedAt: string, now: Date = new Date()): boolean {
-  const updated = new Date(scoreUpdatedAt);
-  const diffDays = (now.getTime() - updated.getTime()) / (1000 * 60 * 60 * 24);
-  return diffDays > STALE_THRESHOLD_DAYS;
 }
 
 export function relativeTime(iso: string, now: Date = new Date()): string {
