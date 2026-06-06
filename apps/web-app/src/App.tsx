@@ -1,9 +1,10 @@
-import { useEffect, useState, useSyncExternalStore, useMemo } from 'react';
+import { useEffect, useState, useSyncExternalStore, useMemo, useRef } from 'react';
 import MapView from './components/MapView';
 import TopBar from './components/TopBar';
 import NavSidebar from './components/NavSidebar';
 import TriageQueue from './components/TriageQueue';
 import BlockDetail from './components/BlockDetail';
+import RoutePanel from './components/RoutePanel';
 import Legend from './components/Legend';
 import InspectedLog from './components/views/InspectedLog';
 import SettingsView from './components/views/SettingsView';
@@ -18,6 +19,7 @@ import type { RiskBand } from './lib/constants';
 import { getAuth, subscribeAuth, initAuth, signOut } from './lib/auth';
 import { initDbStatus } from './lib/dbStatus';
 import type { ViewKey } from './lib/views';
+import { planRoute, attachRoadGeometry, type RouteResult } from './lib/routePlanner';
 
 export default function App() {
   const auth = useSyncExternalStore(subscribeAuth, getAuth, getAuth);
@@ -104,6 +106,28 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
   const toggleHeatmap = (label: string) =>
     setHeatmapFactor(cur => (cur === label ? null : label));
 
+  // Recommended inspection route (Orienteering Problem, solved client-side).
+  const [routeOpen, setRouteOpen] = useState(false);
+  const [route, setRoute] = useState<RouteResult | null>(null);
+  // District the current route/empty-result was computed for (drives the panel's
+  // "no candidates" message vs. the initial hint).
+  const [routeDistrict, setRouteDistrict] = useState<string | null>(null);
+  // Guards against a stale OSRM response overwriting a newer plan.
+  const planSeqRef = useRef(0);
+
+  const handlePlanRoute = (district: string) => {
+    setRouteDistrict(district);
+    const base = planRoute(blocks, district);
+    setRoute(base); // show the straight-line plan instantly
+    const seq = ++planSeqRef.current;
+    if (base) {
+      // Upgrade to a real-road path + real drive time in the background.
+      void attachRoadGeometry(base).then(upgraded => {
+        if (planSeqRef.current === seq) setRoute(upgraded);
+      });
+    }
+  };
+
   // Band/status filters are lifted here so they drive BOTH the triage list
   // AND the map points. (Free-text search stays inside the list — filtering
   // the map per keystroke would re-cluster 60k points on every character.)
@@ -186,6 +210,9 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
             onHover={setHoveredId}
             flyToken={flyToken}
             heatmapFactor={heatmapFactor}
+            route={routeOpen ? route : null}
+            routeOpen={routeOpen}
+            onToggleRoute={() => setRouteOpen(o => !o)}
           />
           <TriageQueue
             blocks={filteredBlocks}
@@ -205,6 +232,15 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
             onClose={() => setSelectedId(null)}
             heatmapFactor={heatmapFactor}
             onToggleHeatmap={toggleHeatmap}
+          />
+          <RoutePanel
+            open={routeOpen}
+            blocks={blocks}
+            route={route}
+            plannedDistrict={routeDistrict}
+            onClose={() => setRouteOpen(false)}
+            onPlan={handlePlanRoute}
+            onSelectStop={handleSelect}
           />
           <Legend triageOpen={triageOpen} />
           {heatmapFactor && (
