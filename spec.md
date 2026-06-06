@@ -73,6 +73,10 @@ The unified score (0–100) is a weighted sum of sub-factors. Weights are indica
 
 Building age, height/storeys, use class, historical UBW orders/inspection notices, density, proximity to slopes, last inspection date.
 
+### Training cohort: 30+ years only (locked)
+
+The model trains and scores ONLY on buildings aged 30 or more years. The DS2 label (statutory inspection/repair notices) is MBIS-driven, and MBIS only targets buildings 30+ years old, so the positive rate is ~0% under 30, 0.9% at 30 to 40, 5% at 40 to 50, and ~12% at 50+. Training on the full 51k stock just relearns "old equals flagged" and drowns the features that carry real signal (InSAR subsidence, use class, structure, district). Restricting to the 30+ cohort (~34,900 buildings, ~5.7% positive) makes the model separate within the at-risk group, which is where the InSAR edge matters. Baseline so far (age + use + structure + district, no InSAR): test PR-AUC 0.14, precision@500 of 12% (2.1x lift), but only ~1x lift at the top 100, which is the gap InSAR should close. Implemented in `model/train_baseline.py` (constant `MIN_AGE`).
+
 ### Approach
 
 - **v1:** Transparent weighted scoring — explainable baseline, fast to ship.
