@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, CheckCircle, Building2, MapPin, X, Sun, Moon, Monitor } from 'lucide-react';
+import { Search, CheckCircle, Building2, MapPin, X, Sun, Moon, Monitor, AlertTriangle } from 'lucide-react';
 import type { Block, Page } from '../types';
 import { supabase } from '../lib/supabase';
 import { getHomeBuilding, setHomeBuilding, clearHomeBuilding } from '../lib/storage';
@@ -23,6 +23,7 @@ export default function SettingsPage({ onNavigate }: Props) {
   const [results, setResults] = useState<Block[]>([]);
   const [allBlocks, setAllBlocks] = useState<Block[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [open, setOpen] = useState(false);
   const [home, setHome] = useState(getHomeBuilding);
   const [saved, setSaved] = useState(false);
@@ -32,10 +33,14 @@ export default function SettingsPage({ onNavigate }: Props) {
   useEffect(() => {
     async function fetchBlocks() {
       const { data, error } = await supabase
-        .from('blocks')
+        .from('resident_buildings')
         .select('id, address, district, object_id')
         .order('address');
-      if (!error && data) setAllBlocks(data as Block[]);
+      if (error) {
+        setLoadError(true);
+      } else if (data) {
+        setAllBlocks(data as Block[]);
+      }
       setLoading(false);
     }
     fetchBlocks();
@@ -104,6 +109,12 @@ export default function SettingsPage({ onNavigate }: Props) {
 
       <div className="settings-section">
         <span className="label">{home ? 'Change building' : 'Find your building'}</span>
+        {loadError && (
+          <div className="error-banner" style={{ marginBottom: 12 }}>
+            <AlertTriangle size={18} />
+            Couldn't load the building list. Please check your connection and try again.
+          </div>
+        )}
         <div className="search-field">
           <div className="search-input-wrap">
             <Search size={18} className="search-icon" />
