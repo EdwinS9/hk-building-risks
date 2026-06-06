@@ -33,6 +33,7 @@ export function colorForScore(score: number): string {
 // Sentinel "factor" key for the inspection-age score so it can be heat-mapped
 // like a real breakdown factor even though it's derived, not stored.
 export const LAST_INSPECTED_FACTOR = '__last_inspected__';
+export const BUILDING_AGE_FACTOR = '__building_age__';
 
 const MS_PER_YEAR = 365.25 * 24 * 3600 * 1000;
 
@@ -48,6 +49,20 @@ export function inspectionAgeScore(lastInspected: string | null): number {
   if (years <= 1) return 0;
   if (years >= 30) return 100;
   return Math.round(((years - 1) / (30 - 1)) * 100);
+}
+
+// Score building age as a risk factor (0–100):
+//   • 0 points until the building is 25 years old
+//   • linear climb from there, reaching 100 at 60 years
+//   • unknown completion date ⇒ 0 points (no age evidence)
+export function buildingAgeScore(completionDate: string | null): number {
+  if (!completionDate) return 0;
+  const then = new Date(completionDate).getTime();
+  if (Number.isNaN(then)) return 0;
+  const years = (Date.now() - then) / MS_PER_YEAR;
+  if (years <= 25) return 0;
+  if (years >= 60) return 100;
+  return Math.round(((years - 25) / (60 - 25)) * 100);
 }
 
 export function relativeTime(iso: string, now: Date = new Date()): string {

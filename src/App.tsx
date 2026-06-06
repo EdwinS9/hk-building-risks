@@ -13,7 +13,7 @@ import DataLoadingScreen from './components/DataLoadingScreen';
 import { getBlocks, subscribe, getBlockById, resetBlocksCache, getLoadProgress, BLOCK_STATUSES } from './data/blocks';
 import type { BlockStatus } from './data/blocks';
 import { Flame, X } from 'lucide-react';
-import { BAND_ORDER, LAST_INSPECTED_FACTOR } from './lib/constants';
+import { BAND_ORDER, LAST_INSPECTED_FACTOR, BUILDING_AGE_FACTOR } from './lib/constants';
 import type { RiskBand } from './lib/constants';
 import { getAuth, subscribeAuth, initAuth, signOut } from './lib/auth';
 import { initDbStatus } from './lib/dbStatus';
@@ -48,7 +48,10 @@ export default function App() {
 // Floating control shown while a single-score heatmap is active on the map.
 // Explains the gradient and offers a one-click way back to the normal view.
 function HeatmapBar({ factor, onClear }: { factor: string; onClear: () => void }) {
-  const name = factor === LAST_INSPECTED_FACTOR ? 'Last inspected' : factor;
+  const name =
+    factor === LAST_INSPECTED_FACTOR ? 'Last inspected'
+    : factor === BUILDING_AGE_FACTOR ? 'Building age'
+    : factor;
   return (
     <div className="heatmap-bar glass">
       <Flame size={13} className="heatmap-bar-icon" />

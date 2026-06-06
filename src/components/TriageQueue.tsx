@@ -93,7 +93,7 @@ export default function TriageQueue({
   async function handleRecalculate() {
     const ok = window.confirm(
       `Calculate risk scores for all ${totalCount.toLocaleString()} blocks?\n\n` +
-      `This saves the average of every risk breakdown score plus the Last inspected score to the blocks table.`,
+      `This saves the average of every risk breakdown score plus Last inspected and Building age to the blocks table.`,
     );
     if (!ok) return;
 

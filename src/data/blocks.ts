@@ -4,7 +4,7 @@
 // store API (getBlocks / subscribe / getBlockById) keeps consumers away from
 // direct Supabase calls.
 import { supabase } from '../lib/supabase';
-import { bandForScore, inspectionAgeScore, type RiskBand } from '../lib/constants';
+import { bandForScore, buildingAgeScore, inspectionAgeScore, type RiskBand } from '../lib/constants';
 
 export type BlockStatus = 'Not scheduled' | 'Inspected';
 
@@ -55,6 +55,7 @@ export interface Block {
   riskBand: RiskBand;
   scoreUpdatedAt: string;
   factors?: RiskFactor[];
+  completionDate: string | null;
   lastInspected: string | null;
   status: BlockStatus;
   /** Shared free-text note. Editable by any authenticated user. */
@@ -122,6 +123,7 @@ interface BlockRow {
   district: string;
   latitude: number | string;
   longitude: number | string;
+  completion_date: string | null;
   risk_score: number | string;
   risk_score_updated_at: string;
   last_inspected: string | null;
@@ -157,6 +159,7 @@ function rowToBlock(row: BlockRow, factors?: RiskFactor[]): Block {
     riskBand: bandForScore(score),
     scoreUpdatedAt: row.risk_score_updated_at,
     factors,
+    completionDate: row.completion_date,
     lastInspected: row.last_inspected,
     status: (row.status as BlockStatus) ?? 'Not scheduled',
     note: row.note ?? null,
@@ -170,7 +173,7 @@ function rowToBlock(row: BlockRow, factors?: RiskFactor[]): Block {
 const PAGE_SIZE = 5000;
 
 const BLOCK_COLUMNS =
-  'id, object_id, address, district, latitude, longitude, risk_score, risk_score_updated_at, last_inspected, status, note, note_updated_at';
+  'id, object_id, address, district, latitude, longitude, completion_date, risk_score, risk_score_updated_at, last_inspected, status, note, note_updated_at';
 
 export async function loadBlocks(): Promise<void> {
   // De-dupe concurrent loads.
@@ -693,7 +696,11 @@ export async function generateMockInspections(
 
 function calculateRiskScore(block: Block): number {
   const factorScores = block.factors?.map(f => f.contribution * 100) ?? [];
-  const scores = [...factorScores, inspectionAgeScore(block.lastInspected)];
+  const scores = [
+    ...factorScores,
+    inspectionAgeScore(block.lastInspected),
+    buildingAgeScore(block.completionDate),
+  ];
   const average = scores.reduce((sum, score) => sum + score, 0) / scores.length;
   return Math.round(average * 100) / 100;
 }

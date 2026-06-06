@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { X, Clock4, StickyNote, Save, Loader2, Flame } from 'lucide-react';
 import type { Block } from '../data/blocks';
-import { colorForBand, relativeTime, inspectionAgeScore, LAST_INSPECTED_FACTOR } from '../lib/constants';
+import {
+  colorForBand,
+  relativeTime,
+  inspectionAgeScore,
+  buildingAgeScore,
+  LAST_INSPECTED_FACTOR,
+  BUILDING_AGE_FACTOR,
+} from '../lib/constants';
 import { setBlockNote } from '../data/blocks';
 
 interface Props {
@@ -100,6 +107,16 @@ export default function BlockDetail({ block, onClose, heatmapFactor, onToggleHea
               color={color}
               active={heatmapFactor === LAST_INSPECTED_FACTOR}
               onClick={() => onToggleHeatmap(LAST_INSPECTED_FACTOR)}
+            />
+
+            <FactorBar
+              label="Building age"
+              detail={b.completionDate ? formatInspectedDate(b.completionDate) : 'unknown'}
+              pct={buildingAgeScore(b.completionDate)}
+              fillPct={buildingAgeScore(b.completionDate)}
+              color={color}
+              active={heatmapFactor === BUILDING_AGE_FACTOR}
+              onClick={() => onToggleHeatmap(BUILDING_AGE_FACTOR)}
             />
           </div>
         </div>

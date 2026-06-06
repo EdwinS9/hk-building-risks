@@ -3,7 +3,11 @@ import maplibregl, { Map as MLMap, StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {
   HK_CENTER, HK_DEFAULT_ZOOM, HK_DEFAULT_PITCH, HK_DEFAULT_BEARING,
-  RISK_BANDS, LAST_INSPECTED_FACTOR, inspectionAgeScore,
+  RISK_BANDS,
+  LAST_INSPECTED_FACTOR,
+  BUILDING_AGE_FACTOR,
+  inspectionAgeScore,
+  buildingAgeScore,
 } from '../lib/constants';
 import type { Block } from '../data/blocks';
 import MapControls from './MapControls';
@@ -67,6 +71,7 @@ function applyHeatmapStyle(map: MLMap, factor: string | null) {
 function heatValue(b: Block, factor: string | null): number {
   if (!factor) return -1;
   if (factor === LAST_INSPECTED_FACTOR) return inspectionAgeScore(b.lastInspected) / 100;
+  if (factor === BUILDING_AGE_FACTOR) return buildingAgeScore(b.completionDate) / 100;
   const f = b.factors?.find(x => x.label === factor);
   return f ? f.contribution : -1;
 }
