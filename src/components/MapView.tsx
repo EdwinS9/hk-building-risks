@@ -148,20 +148,33 @@ export default function MapView(props: Props) {
         const m = mapRef.current;
         if (m && loadedRef.current && m.getLayer('blocks-glow')) {
           const t = (Math.sin(pulsePhaseRef.current) + 1) / 2;
-          const min = 14, max = 28;
-          const r = min + t * (max - min);
-          const opacity = 0.18 + t * 0.22;
+          // The glow is a tight HALO around the marker, not a fixed-size blob.
+          // It tracks the marker's zoom-interpolated radius + a small pulsing
+          // offset, so zoomed in it stays a small point instead of a "cloud".
+          const p = 1.5 + t * 3; // pulsing halo thickness in px
           m.setPaintProperty('blocks-glow', 'circle-radius', [
-            'case',
-            ['>=', ['get', 'score'], 90], r * 1.15,
-            ['>=', ['get', 'score'], 70], r,
-            0,
+            'interpolate', ['linear'], ['zoom'],
+            10, 3 + p,
+            13, 4.5 + p * 1.1,
+            15, 6 + p * 1.2,
           ]);
+          const base = 0.22 + t * 0.22;
+          const critical = base;
+          const high = base * 0.7;
+          // Fade the glow out as you zoom in. Past ~z14 it would just stack
+          // into translucent "clouds" over dense points — so kill it there and
+          // let the clean solid dots stand alone for inspection/clicking.
           m.setPaintProperty('blocks-glow', 'circle-opacity', [
-            'case',
-            ['>=', ['get', 'score'], 90], opacity,
-            ['>=', ['get', 'score'], 70], opacity * 0.7,
-            0,
+            '*',
+            ['case',
+              ['>=', ['get', 'score'], 90], critical,
+              ['>=', ['get', 'score'], 70], high,
+              0,
+            ],
+            ['interpolate', ['linear'], ['zoom'],
+              13, 1,
+              14.5, 0,
+            ],
           ]);
         }
         rafRef.current = requestAnimationFrame(tick);
@@ -336,7 +349,7 @@ function setupLayers(map: MLMap) {
       'circle-color': bandColorExpr,
       'circle-radius': 0,
       'circle-opacity': 0,
-      'circle-blur': 0.85,
+      'circle-blur': 0.55,
     },
   });
 
@@ -365,19 +378,16 @@ function setupLayers(map: MLMap) {
           16, 5,
         ],
       ],
-      'circle-stroke-color': '#fff',
+      'circle-stroke-color': '#ffffff',
       'circle-stroke-width': [
         'case',
-        ['boolean', ['feature-state', 'selected'], false], 1.8,
-        ['boolean', ['feature-state', 'hovered'], false], 1.1,
-        0.3,
+        ['boolean', ['feature-state', 'selected'], false], 2,
+        ['boolean', ['feature-state', 'hovered'], false], 1.2,
+        0.6,
       ],
-      'circle-stroke-opacity': 0.85,
-      'circle-opacity': [
-        'interpolate', ['linear'], ['zoom'],
-        9, 0.55,
-        12, 0.92,
-      ],
+      'circle-stroke-opacity': 1,
+      // Fully opaque, crisp dots — no zoom-based fade.
+      'circle-opacity': 1,
     },
   });
 }

@@ -10,7 +10,8 @@ import ScheduleView from './components/views/ScheduleView';
 import DataView from './components/views/DataView';
 import SettingsView from './components/views/SettingsView';
 import LoginScreen from './components/auth/LoginScreen';
-import { getBlocks, subscribe, getBlockById, resetBlocksCache } from './data/blocks';
+import DataLoadingScreen from './components/DataLoadingScreen';
+import { getBlocks, subscribe, getBlockById, resetBlocksCache, getLoadProgress } from './data/blocks';
 import { getAuth, subscribeAuth, initAuth, signOut } from './lib/auth';
 import type { ViewKey } from './lib/views';
 
@@ -55,6 +56,7 @@ function BootSplash() {
 
 function Dashboard({ onSignOut }: { onSignOut: () => void }) {
   const blocks = useSyncExternalStore(subscribe, getBlocks, getBlocks);
+  const progress = useSyncExternalStore(subscribe, getLoadProgress, getLoadProgress);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [flyToken, setFlyToken] = useState(0);
@@ -89,6 +91,12 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
   }
 
   const isMap = view === 'risk-monitor';
+
+  // Gate the whole dashboard behind a loading screen until ALL rows are in
+  // (or an error surfaces). Avoids rendering a half-populated map/list.
+  if (!progress.done || progress.error) {
+    return <DataLoadingScreen progress={progress} />;
+  }
 
   return (
     <div className="app-root">

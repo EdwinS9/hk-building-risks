@@ -37,6 +37,21 @@ let _loaded = false;
 let _loadPromise: Promise<void> | null = null;
 let _total: number | null = null;
 let _loadedCount = 0;
+let _error: string | null = null;
+
+export interface LoadProgress {
+  loaded: number;
+  total: number | null;
+  done: boolean;
+  error: string | null;
+}
+
+// Cached snapshot so useSyncExternalStore gets a stable reference between
+// emits (returning a fresh object every call would loop infinitely).
+let _progress: LoadProgress = { loaded: 0, total: null, done: false, error: null };
+function refreshProgress() {
+  _progress = { loaded: _loadedCount, total: _total, done: _loaded, error: _error };
+}
 
 const listeners = new Set<() => void>();
 
@@ -44,9 +59,7 @@ function emit() { listeners.forEach(l => l()); }
 
 export function getBlocks(): Block[] { return _blocks; }
 export function getBlockById(id: string): Block | undefined { return _byId.get(id); }
-export function getLoadProgress(): { loaded: number; total: number | null; done: boolean } {
-  return { loaded: _loadedCount, total: _total, done: _loaded };
-}
+export function getLoadProgress(): LoadProgress { return _progress; }
 export function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   // Lazy first load — fires on first subscriber (the React hook).
@@ -112,6 +125,10 @@ export async function loadBlocks(): Promise<void> {
     _byId = new Map();
     _loadedCount = 0;
     _total = null;
+    _loaded = false;
+    _error = null;
+    refreshProgress();
+    emit();
 
     // Pre-fetch scores in parallel — small dataset (one row per factor per
     // block, capped well under PAGE_SIZE * a few). Paginate if it grows.
@@ -123,22 +140,33 @@ export async function loadBlocks(): Promise<void> {
       .from('blocks_with_status')
       .select(BLOCK_COLUMNS, { count: 'exact' })
       .order('risk_score', { ascending: false })
+      .order('id', { ascending: true })
       .range(0, PAGE_SIZE - 1);
 
     if (first.error) throw first.error;
 
     _total = first.count ?? (first.data?.length ?? 0);
+    const firstRows = (first.data ?? []) as BlockRow[];
+
+    // CRITICAL: the server enforces its own max-rows cap, so a request for
+    // `PAGE_SIZE` rows may return fewer. Step by the number of rows ACTUALLY
+    // returned, not by what we asked for — otherwise every gap between
+    // (returned count) and PAGE_SIZE is silently skipped.
+    const step = firstRows.length || PAGE_SIZE;
 
     // Ingest first page immediately.
-    ingestRows((first.data ?? []) as BlockRow[]);
+    ingestRows(firstRows);
+    refreshProgress();
     emit();
 
     // Walk remaining pages in parallel (bounded concurrency to stay
     // friendly to PostgREST). Most setups easily handle 4-way concurrency.
     const remaining: Array<[number, number]> = [];
-    for (let start = PAGE_SIZE; start < _total; start += PAGE_SIZE) {
-      const end = Math.min(start + PAGE_SIZE, _total) - 1;
-      remaining.push([start, end]);
+    if (step > 0) {
+      for (let start = step; start < _total; start += step) {
+        const end = start + step - 1; // server clamps the upper bound itself
+        remaining.push([start, end]);
+      }
     }
 
     const CONCURRENCY = 4;
@@ -151,15 +179,33 @@ export async function loadBlocks(): Promise<void> {
           .from('blocks_with_status')
           .select(BLOCK_COLUMNS)
           .order('risk_score', { ascending: false })
+          .order('id', { ascending: true })
           .range(start, end);
         if (res.error) throw res.error;
         ingestRows((res.data ?? []) as BlockRow[]);
-        // Re-sort once at the end (each page is already ordered, but pages
-        // interleave when concurrent) — see post-loop sort below.
+        refreshProgress();
         emit();
       }
     }
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, remaining.length) }, worker));
+
+    // Safety net: if the server cap left us short of the reported total
+    // (e.g. count was approximate, or a page returned unexpectedly few rows),
+    // keep pulling sequentially from where we are until fully drained.
+    while (_loadedCount < (_total ?? 0)) {
+      const res = await supabase
+        .from('blocks_with_status')
+        .select(BLOCK_COLUMNS)
+        .order('risk_score', { ascending: false })
+        .order('id', { ascending: true })
+        .range(_loadedCount, _loadedCount + (step || PAGE_SIZE) - 1);
+      if (res.error) throw res.error;
+      const rows = (res.data ?? []) as BlockRow[];
+      if (rows.length === 0) break; // drained — stop even if count was wrong
+      ingestRows(rows);
+      refreshProgress();
+      emit();
+    }
 
     // Apply per-factor breakdowns once scores finish (often quicker than
     // blocks paging, but await here to be sure).
@@ -176,11 +222,16 @@ export async function loadBlocks(): Promise<void> {
     // queue's default sort cheap).
     _blocks.sort((a, b) => b.riskScore - a.riskScore);
     _loaded = true;
+    refreshProgress();
     emit();
   })();
 
   try {
     await _loadPromise;
+  } catch (err) {
+    _error = err instanceof Error ? err.message : 'Failed to load data';
+    refreshProgress();
+    emit();
   } finally {
     _loadPromise = null;
   }
@@ -190,7 +241,10 @@ function ingestRows(rows: BlockRow[]) {
   // Mutate in place — much faster than creating a fresh array for each
   // batch (which would churn 60k allocations). Consumers re-read via
   // getBlocks() on emit and never depend on reference equality.
+  // Dedup by id so overlapping pages / safety-net re-fetches can't create
+  // duplicate rows or inflate _loadedCount (which gates the loading screen).
   for (const r of rows) {
+    if (_byId.has(r.id)) continue;
     const b = rowToBlock(r);
     _blocks.push(b);
     _byId.set(b.id, b);
@@ -226,7 +280,15 @@ export function resetBlocksCache(): void {
   _loadedCount = 0;
   _total = null;
   _loaded = false;
+  _error = null;
+  refreshProgress();
   emit();
+}
+
+// Allow the UI to retry after a load error.
+export function retryLoad(): void {
+  if (_loadPromise) return;
+  void loadBlocks();
 }
 
 // ─── Mutations ─────────────────────────────────────────────────────────────
