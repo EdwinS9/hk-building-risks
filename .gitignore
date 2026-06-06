@@ -1,6 +1,4 @@
-model/scored.csv
 model/building_features.csv
-model/height_features.csv
 model/building_footprints.geojson
 model/*.log
 insar/products/
@@ -12,5 +10,7 @@ __pycache__/
 *:Zone.Identifier
 .bulk_download_cookiejar.txt
 insar/mintpy/
-model/insar_features.csv
 model/insar_layer.geojson
+download-all-*.py
+Data Analysis/.DS_Store
+Data Analysis/insar/products
