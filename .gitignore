@@ -85,3 +85,13 @@ Desktop.ini
 TODO.local.md
 NOTES.local.md
 .DS_Store
+
+# ===== Crack-detection module (cracks/, Python ML) =====
+.venv/
+__pycache__/
+*.pyc
+cracks/data/
+cracks/artifacts/
+cracks/examples/
+cracks/.gradio/
+cracks/flagged/
