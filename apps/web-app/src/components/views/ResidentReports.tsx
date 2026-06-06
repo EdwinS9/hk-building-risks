@@ -15,6 +15,8 @@ import {
   Building2,
   Inbox,
   SlidersHorizontal,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react';
 import type { Block } from '../../data/blocks';
 import {
@@ -24,6 +26,7 @@ import {
   loadReports,
   markReportRead,
   markReportSolved,
+  markReportArchived,
   type ResidentReport,
 } from '../../data/reports';
 import { colorForBand, relativeTime } from '../../lib/constants';
@@ -79,6 +82,8 @@ export default function ResidentReports({ blocks, onJump, focusBlockId, focusTok
   const [photoOnly, setPhotoOnly] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('recent');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // Archive view: shows ONLY archived reports; the default view hides them.
+  const [archivedView, setArchivedView] = useState(false);
 
   // Draggable split between the list (left) and the map (right).
   const splitRef = useRef<HTMLDivElement>(null);
@@ -132,6 +137,7 @@ export default function ResidentReports({ blocks, onJump, focusBlockId, focusTok
   // detail. Reset list filters so the building's reports are guaranteed visible.
   useEffect(() => {
     if (!focusBlockId) return;
+    setArchivedView(false);
     setStatusFilter(new Set<StatusFilter>(['new', 'read', 'solved']));
     setQuery('');
     setPhotoOnly(false);
@@ -159,6 +165,8 @@ export default function ResidentReports({ blocks, onJump, focusBlockId, focusTok
   const searchFiltered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return reports.filter(r => {
+      // Archive view shows only archived reports; default view hides them.
+      if (archivedView ? !r.archivedAt : !!r.archivedAt) return false;
       if (!statusFilter.has(statusOf(r))) return false;
       if (photoOnly && !r.photoUrl) return false;
       const b = blockById.get(r.blockId);
@@ -169,7 +177,7 @@ export default function ResidentReports({ blocks, onJump, focusBlockId, focusTok
       }
       return true;
     });
-  }, [reports, query, statusFilter, photoOnly, districtFilter, blockById]);
+  }, [reports, query, statusFilter, photoOnly, districtFilter, blockById, archivedView]);
 
   // Buildings (deduped) that have at least one matching report — these are the
   // only points the map draws.
@@ -186,11 +194,11 @@ export default function ResidentReports({ blocks, onJump, focusBlockId, focusTok
     return out;
   }, [searchFiltered, blockById]);
 
-  // Count of open (unsolved) reports per building — drives the list badges.
+  // Count of open (unsolved, non-archived) reports per building — list badges.
   const openCountByBlock = useMemo(() => {
     const m = new Map<string, number>();
     for (const r of reports) {
-      if (r.solvedAt) continue;
+      if (r.solvedAt || r.archivedAt) continue;
       m.set(r.blockId, (m.get(r.blockId) ?? 0) + 1);
     }
     return m;
@@ -212,14 +220,16 @@ export default function ResidentReports({ blocks, onJump, focusBlockId, focusTok
     return arr;
   }, [searchFiltered, buildingFilter, sortKey, blockById]);
 
-  // Headline counts over ALL reports (not the filtered view).
+  // Headline counts over the ACTIVE (non-archived) set, plus the archive size.
   const stats = useMemo(() => {
-    let neu = 0, solved = 0;
+    let neu = 0, solved = 0, active = 0, archived = 0;
     for (const r of reports) {
+      if (r.archivedAt) { archived++; continue; }
+      active++;
       if (r.solvedAt) solved++;
       else if (!r.readAt) neu++;
     }
-    return { total: reports.length, neu, open: reports.length - solved, solved };
+    return { total: active, neu, open: active - solved, solved, archived };
   }, [reports]);
 
   // If the selected building drops out of the current filter set, clear it.
@@ -270,6 +280,22 @@ export default function ResidentReports({ blocks, onJump, focusBlockId, focusTok
     finally { setBusyId(null); }
   }
 
+  async function onToggleArchived(r: ResidentReport) {
+    setBusyId(r.id);
+    // Archiving removes the row from the current (non-archive) list, so drop
+    // any expanded selection on it.
+    if (selectedReportId === r.id) setSelectedReportId(null);
+    try { await markReportArchived(r.id, !r.archivedAt); }
+    catch { /* store reverts the optimistic patch */ }
+    finally { setBusyId(null); }
+  }
+
+  function toggleArchivedView() {
+    setArchivedView(v => !v);
+    setBuildingFilter(null);
+    setSelectedReportId(null);
+  }
+
   const filterBuilding = buildingFilter ? blockById.get(buildingFilter) ?? null : null;
 
   // How many filters differ from their defaults (drives the button badge).
@@ -290,30 +316,47 @@ export default function ResidentReports({ blocks, onJump, focusBlockId, focusTok
     <main className="page reports-page">
       <header className="page-header">
         <div className="page-title">
-          <MessageSquareWarning size={16} />
-          <h1>Resident Reports</h1>
-          <span className="page-count mono">{stats.total}</span>
-          <button
-            className="action-btn tiny page-import-btn"
-            onClick={() => void loadReports(true)}
-            disabled={status.loading}
-            title="Reload reports"
-          >
-            {status.loading ? <Loader2 size={11} className="spin" /> : <RefreshCw size={11} />}
-            Refresh
-          </button>
+          {archivedView ? <Archive size={16} /> : <MessageSquareWarning size={16} />}
+          <h1>{archivedView ? 'Archived Reports' : 'Resident Reports'}</h1>
+          <span className="page-count mono">{archivedView ? stats.archived : stats.total}</span>
+          <div className="page-title-actions">
+            <button
+              className={`action-btn tiny reports-archive-toggle ${archivedView ? 'on' : ''}`}
+              onClick={toggleArchivedView}
+              title={archivedView ? 'Back to active reports' : 'View archived reports'}
+            >
+              {archivedView ? <ArchiveRestore size={11} /> : <Archive size={11} />}
+              {archivedView ? 'Active' : 'Archive'}
+              {!archivedView && stats.archived > 0 && (
+                <span className="archive-count mono">{stats.archived}</span>
+              )}
+            </button>
+            <button
+              className="action-btn tiny"
+              onClick={() => void loadReports(true)}
+              disabled={status.loading}
+              title="Reload reports"
+            >
+              {status.loading ? <Loader2 size={11} className="spin" /> : <RefreshCw size={11} />}
+              Refresh
+            </button>
+          </div>
         </div>
         <div className="page-sub">
-          Issues submitted by residents. Mark a report <em>read</em> once seen, and{' '}
-          <em>solved</em> when the problem no longer exists.
+          {archivedView
+            ? 'Archived reports are hidden from the active list. Restore one to bring it back.'
+            : <>Issues submitted by residents. Mark a report <em>read</em> once seen, and{' '}
+                <em>solved</em> when the problem no longer exists.</>}
         </div>
-        <div className="reports-stats">
-          <span className="rstat"><b className="mono">{stats.neu}</b> new</span>
-          <span className="dot-sep" />
-          <span className="rstat"><b className="mono">{stats.open}</b> open</span>
-          <span className="dot-sep" />
-          <span className="rstat dim"><b className="mono">{stats.solved}</b> solved</span>
-        </div>
+        {!archivedView && (
+          <div className="reports-stats">
+            <span className="rstat"><b className="mono">{stats.neu}</b> new</span>
+            <span className="dot-sep" />
+            <span className="rstat"><b className="mono">{stats.open}</b> open</span>
+            <span className="dot-sep" />
+            <span className="rstat dim"><b className="mono">{stats.solved}</b> solved</span>
+          </div>
+        )}
       </header>
 
       <section className="page-body reports-split" ref={splitRef}>
@@ -435,8 +478,12 @@ export default function ResidentReports({ blocks, onJump, focusBlockId, focusTok
               </div>
             ) : listReports.length === 0 ? (
               <div className="reports-empty">
-                <Inbox size={26} />
-                <span>{reports.length === 0 ? 'No resident reports yet.' : 'No reports match these filters.'}</span>
+                {archivedView ? <Archive size={26} /> : <Inbox size={26} />}
+                <span>
+                  {archivedView
+                    ? (stats.archived === 0 ? 'No archived reports.' : 'No archived reports match these filters.')
+                    : (stats.total === 0 ? 'No resident reports yet.' : 'No reports match these filters.')}
+                </span>
               </div>
             ) : (
               listReports.map(r => {
@@ -494,24 +541,38 @@ export default function ResidentReports({ blocks, onJump, focusBlockId, focusTok
                             Submitted {formatDateTime(r.submittedAt)}
                             {r.readAt && <> · Read {formatDateTime(r.readAt)}</>}
                             {r.solvedAt && <> · Solved {formatDateTime(r.solvedAt)}</>}
+                            {r.archivedAt && <> · Archived {formatDateTime(r.archivedAt)}</>}
                           </div>
                           <div className="report-actions">
+                            {!r.archivedAt && (
+                              <>
+                                <button
+                                  className={`action-btn tiny ${r.readAt ? '' : 'primary'}`}
+                                  onClick={() => void onToggleRead(r)}
+                                  disabled={busyId === r.id}
+                                >
+                                  {busyId === r.id ? <Loader2 size={11} className="spin" />
+                                    : r.readAt ? <RotateCcw size={11} /> : <Check size={11} />}
+                                  {r.readAt ? 'Mark unread' : 'Mark read'}
+                                </button>
+                                <button
+                                  className={`action-btn tiny ${r.solvedAt ? 'solved-on' : 'solve'}`}
+                                  onClick={() => void onToggleSolved(r)}
+                                  disabled={busyId === r.id}
+                                >
+                                  {r.solvedAt ? <RotateCcw size={11} /> : <CircleCheck size={11} />}
+                                  {r.solvedAt ? 'Reopen' : 'Mark solved'}
+                                </button>
+                              </>
+                            )}
                             <button
-                              className={`action-btn tiny ${r.readAt ? '' : 'primary'}`}
-                              onClick={() => void onToggleRead(r)}
+                              className="action-btn tiny"
+                              onClick={() => void onToggleArchived(r)}
                               disabled={busyId === r.id}
+                              title={r.archivedAt ? 'Restore to active reports' : 'Archive this report'}
                             >
-                              {busyId === r.id ? <Loader2 size={11} className="spin" />
-                                : r.readAt ? <RotateCcw size={11} /> : <Check size={11} />}
-                              {r.readAt ? 'Mark unread' : 'Mark read'}
-                            </button>
-                            <button
-                              className={`action-btn tiny ${r.solvedAt ? 'solved-on' : 'solve'}`}
-                              onClick={() => void onToggleSolved(r)}
-                              disabled={busyId === r.id}
-                            >
-                              {r.solvedAt ? <RotateCcw size={11} /> : <CircleCheck size={11} />}
-                              {r.solvedAt ? 'Reopen' : 'Mark solved'}
+                              {r.archivedAt ? <ArchiveRestore size={11} /> : <Archive size={11} />}
+                              {r.archivedAt ? 'Unarchive' : 'Archive'}
                             </button>
                             {b && (
                               <button

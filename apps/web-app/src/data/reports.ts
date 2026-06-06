@@ -20,6 +20,8 @@ export interface ResidentReport {
   readAt: string | null;
   /** null = unsolved / still open. */
   solvedAt: string | null;
+  /** null = active. When set, the report is hidden everywhere but the Archive. */
+  archivedAt: string | null;
 }
 
 interface ReportRow {
@@ -30,6 +32,7 @@ interface ReportRow {
   submitted_at: string;
   read_at: string | null;
   solved_at: string | null;
+  archived_at: string | null;
 }
 
 function rowToReport(r: ReportRow): ResidentReport {
@@ -41,11 +44,12 @@ function rowToReport(r: ReportRow): ResidentReport {
     submittedAt: r.submitted_at,
     readAt: r.read_at,
     solvedAt: r.solved_at,
+    archivedAt: r.archived_at,
   };
 }
 
 const REPORT_COLUMNS =
-  'id, block_id, description, photo_url, submitted_at, read_at, solved_at';
+  'id, block_id, description, photo_url, submitted_at, read_at, solved_at, archived_at';
 
 const PAGE_SIZE = 1000;
 
@@ -83,11 +87,12 @@ export function subscribeReports(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-// Number of OPEN (unsolved) reports for a block — what the block detail shows.
+// Number of OPEN (unsolved, non-archived) reports for a block — what the block
+// detail shows.
 export function getOpenReportCount(blockId: string): number {
   let n = 0;
   for (const r of _reports) {
-    if (r.blockId === blockId && !r.solvedAt) n++;
+    if (r.blockId === blockId && !r.solvedAt && !r.archivedAt) n++;
   }
   return n;
 }
@@ -189,6 +194,26 @@ export async function markReportSolved(id: string, solved: boolean): Promise<voi
     patchLocal(id, { solvedAt: row.solved_at, readAt: row.read_at });
   } catch (err) {
     if (prev) patchLocal(id, { solvedAt: prev.solvedAt, readAt: prev.readAt }); // revert
+    throw err;
+  }
+}
+
+// Archive / unarchive. Archived reports disappear from every view except the
+// Archive; unarchiving restores them to the active set.
+export async function markReportArchived(id: string, archived: boolean): Promise<void> {
+  const prev = _byId.get(id);
+  patchLocal(id, { archivedAt: archived ? new Date().toISOString() : null });
+  try {
+    const { data, error } = await supabase
+      .from('resident_reports')
+      .update({ archived_at: archived ? new Date().toISOString() : null })
+      .eq('id', id)
+      .select('archived_at')
+      .single();
+    if (error) throw error;
+    patchLocal(id, { archivedAt: (data as { archived_at: string | null }).archived_at });
+  } catch (err) {
+    if (prev) patchLocal(id, { archivedAt: prev.archivedAt }); // revert
     throw err;
   }
 }
