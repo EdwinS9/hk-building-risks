@@ -319,6 +319,6 @@ ml/cracks/examples/
 ml/cracks/.gradio/
 ml/cracks/flagged/
 
-# InSAR intermediate products
+# InSAR intermediate products (supersedes the old "Data Analysis/insar/products")
 ml/data-analysis/insar/products/
 ml/insar/products/
