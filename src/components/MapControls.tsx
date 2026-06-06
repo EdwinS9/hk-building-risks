@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { Plus, Minus, Compass, RotateCcw, RotateCw, LocateFixed, Loader2 } from 'lucide-react';
+import { Plus, Minus, Compass, RotateCcw, RotateCw, LocateFixed, Loader2, Route } from 'lucide-react';
 import type { Map as MLMap } from 'maplibre-gl';
 import type { RefObject } from 'react';
 import { HK_CENTER, HK_DEFAULT_ZOOM, HK_DEFAULT_PITCH, HK_DEFAULT_BEARING } from '../lib/constants';
 
 interface Props {
   mapRef: RefObject<MLMap | null>;
+  routeOpen?: boolean;
+  onToggleRoute?: () => void;
 }
 
-export default function MapControls({ mapRef }: Props) {
+export default function MapControls({ mapRef, routeOpen, onToggleRoute }: Props) {
   const [locating, setLocating] = useState(false);
   const [locateError, setLocateError] = useState<string | null>(null);
 
@@ -49,6 +51,15 @@ export default function MapControls({ mapRef }: Props) {
 
   return (
     <div className="map-controls">
+      {onToggleRoute && (
+        <button
+          title={routeOpen ? 'Hide route planner' : 'Recommended routes'}
+          onClick={onToggleRoute}
+          className={routeOpen ? 'active' : ''}
+        >
+          <Route size={14} />
+        </button>
+      )}
       <button title="Zoom in" onClick={() => withMap(m => m.zoomIn())}>
         <Plus size={14} />
       </button>

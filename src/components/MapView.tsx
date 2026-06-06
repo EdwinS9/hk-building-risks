@@ -10,6 +10,7 @@ import {
   buildingAgeScore,
 } from '../lib/constants';
 import type { Block } from '../data/blocks';
+import type { RouteResult } from '../lib/routePlanner';
 import MapControls from './MapControls';
 import { getResolvedTheme, subscribeTheme, type ResolvedTheme } from '../lib/theme';
 
@@ -22,6 +23,10 @@ interface Props {
   flyToken: number;
   /** When set, every dot is recolored by this breakdown factor (heatmap). */
   heatmapFactor?: string | null;
+  /** When set, draw this inspection route (line + numbered stops + depot). */
+  route?: RouteResult | null;
+  routeOpen?: boolean;
+  onToggleRoute?: () => void;
 }
 
 // Normal dot color: by risk band.
@@ -118,6 +123,9 @@ export default function MapView(props: Props) {
   const heatmapFactor = props.heatmapFactor ?? null;
   const heatmapFactorRef = useRef<string | null>(heatmapFactor);
   heatmapFactorRef.current = heatmapFactor;
+  const route = props.route ?? null;
+  const routeRef = useRef<RouteResult | null>(route);
+  routeRef.current = route;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const loadedRef = useRef(false);
@@ -154,6 +162,7 @@ export default function MapView(props: Props) {
       applyFeatureStateDelta(map, prevHoveredRef, hoveredId, 'hovered');
       pushSelected(map, selectedId ? blocks.find(b => b.id === selectedId) : null, heatmapFactorRef.current);
       applyHeatmapStyle(map, heatmapFactorRef.current);
+      pushRoute(map, routeRef.current);
       bindInteractions(map);
       startPulse();
     });
@@ -195,11 +204,19 @@ export default function MapView(props: Props) {
 
       // Single click handler also covers the "empty map → deselect" case.
       m.on('click', e => {
+        const routeLayers = m.getLayer('route-stops') ? ['route-stops'] : [];
         const hits = m.queryRenderedFeatures(e.point, {
-          layers: ['blocks-circle', 'clusters'],
+          layers: ['blocks-circle', 'clusters', ...routeLayers],
         });
         // If we hit a cluster, the cluster-specific handler above handles it.
         if (hits.some(h => h.layer.id === 'clusters')) return;
+        // A numbered route stop selects its underlying block.
+        const stop = hits.find(h => h.layer.id === 'route-stops');
+        if (stop) {
+          const id = stop.properties?.id as string | undefined;
+          if (id) onSelect(id);
+          return;
+        }
         const circle = hits.find(h => h.layer.id === 'blocks-circle');
         if (circle) {
           const id = circle.properties?.id as string | undefined;
@@ -208,6 +225,8 @@ export default function MapView(props: Props) {
           onSelect(null);
         }
       });
+      m.on('mouseenter', 'route-stops', () => { m.getCanvas().style.cursor = 'pointer'; });
+      m.on('mouseleave', 'route-stops', () => { m.getCanvas().style.cursor = ''; });
     }
 
     function startPulse() {
@@ -328,6 +347,22 @@ export default function MapView(props: Props) {
     applyFeatureStateDelta(m, prevHoveredRef, hoveredId, 'hovered');
   }, [hoveredId]);
 
+  // Draw / clear the recommended route and frame it on the map.
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m || !loadedRef.current) return;
+    pushRoute(m, route);
+    if (route && route.line.length > 1) {
+      const lngs = route.line.map(c => c[0]);
+      const lats = route.line.map(c => c[1]);
+      m.fitBounds(
+        [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+        { padding: { top: 90, bottom: 60, left: 410, right: 360 }, maxZoom: 15.5, duration: 700 },
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route]);
+
   // theme → basemap swap; rebuild our overlay layers once new style loads
   useEffect(() => {
     const m = mapRef.current;
@@ -345,6 +380,7 @@ export default function MapView(props: Props) {
       applyFeatureStateDelta(m, prevHoveredRef, hoveredId, 'hovered');
       pushSelected(m, selectedId ? blocks.find(b => b.id === selectedId) : null, heatmapFactorRef.current);
       applyHeatmapStyle(m, heatmapFactorRef.current);
+      pushRoute(m, routeRef.current);
     };
     m.once('style.load', onStyle);
     return () => { m.off('style.load', onStyle); };
@@ -370,7 +406,7 @@ export default function MapView(props: Props) {
   return (
     <>
       <div ref={containerRef} className="map-container" />
-      <MapControls mapRef={mapRef} />
+      <MapControls mapRef={mapRef} routeOpen={props.routeOpen} onToggleRoute={props.onToggleRoute} />
     </>
   );
 }
@@ -555,6 +591,94 @@ function setupLayers(map: MLMap) {
       'circle-opacity': 1,
     },
   });
+
+  setupRouteLayers(map);
+}
+
+// ---------- Recommended-route overlay (line + numbered stops + depot) -------
+// Added last so the route always paints above every other marker. Three small
+// GeoJSON sources keep updates cheap; pushRoute() feeds them.
+function setupRouteLayers(map: MLMap) {
+  for (const id of ['route', 'route-stops', 'route-depot']) {
+    if (!map.getSource(id)) {
+      map.addSource(id, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    }
+  }
+
+  // Color a stop by its risk band, like the rest of the map.
+  const stopColorExpr: maplibregl.ExpressionSpecification = [
+    'step', ['get', 'score'],
+    RISK_BANDS[0].color,
+    40, RISK_BANDS[1].color,
+    70, RISK_BANDS[2].color,
+    90, RISK_BANDS[3].color,
+  ];
+
+  map.addLayer({
+    id: 'route-line',
+    type: 'line',
+    source: 'route',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': '#6EC1FF',
+      'line-width': ['interpolate', ['linear'], ['zoom'], 10, 2.5, 16, 4],
+      'line-opacity': 0.85,
+      'line-dasharray': [2, 1.5],
+    },
+  });
+
+  // Depot marker.
+  map.addLayer({
+    id: 'route-depot',
+    type: 'circle',
+    source: 'route-depot',
+    paint: {
+      'circle-color': '#0c111c',
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 6, 16, 9],
+      'circle-stroke-color': '#6EC1FF',
+      'circle-stroke-width': 2.5,
+    },
+  });
+  map.addLayer({
+    id: 'route-depot-label',
+    type: 'symbol',
+    source: 'route-depot',
+    layout: {
+      'text-field': 'HQ',
+      'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+      'text-size': 10,
+      'text-offset': [0, -1.4],
+      'text-allow-overlap': true,
+      'text-ignore-placement': true,
+    },
+    paint: { 'text-color': '#6EC1FF', 'text-halo-color': 'rgba(0,0,0,0.65)', 'text-halo-width': 1.2 },
+  });
+
+  // Numbered stop markers.
+  map.addLayer({
+    id: 'route-stops',
+    type: 'circle',
+    source: 'route-stops',
+    paint: {
+      'circle-color': stopColorExpr,
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 8, 16, 12],
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': 2,
+    },
+  });
+  map.addLayer({
+    id: 'route-stops-label',
+    type: 'symbol',
+    source: 'route-stops',
+    layout: {
+      'text-field': ['get', 'order'],
+      'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+      'text-size': 11,
+      'text-allow-overlap': true,
+      'text-ignore-placement': true,
+    },
+    paint: { 'text-color': '#ffffff', 'text-halo-color': 'rgba(0,0,0,0.5)', 'text-halo-width': 1 },
+  });
 }
 
 function pushData(map: MLMap, blocks: Block[], heatmapFactor: string | null) {
@@ -599,6 +723,41 @@ function pushSelected(map: MLMap, block: Block | null | undefined, heatmapFactor
       }]
     : [];
   src.setData({ type: 'FeatureCollection', features });
+}
+
+// Feed the three route sources (or clear them when route is null).
+function pushRoute(map: MLMap, route: RouteResult | null) {
+  const lineSrc = map.getSource('route') as maplibregl.GeoJSONSource | undefined;
+  const stopsSrc = map.getSource('route-stops') as maplibregl.GeoJSONSource | undefined;
+  const depotSrc = map.getSource('route-depot') as maplibregl.GeoJSONSource | undefined;
+  if (!lineSrc || !stopsSrc || !depotSrc) return;
+
+  if (!route) {
+    const empty: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
+    lineSrc.setData(empty);
+    stopsSrc.setData(empty);
+    depotSrc.setData(empty);
+    return;
+  }
+
+  lineSrc.setData({
+    type: 'Feature',
+    geometry: { type: 'LineString', coordinates: route.line },
+    properties: {},
+  });
+  stopsSrc.setData({
+    type: 'FeatureCollection',
+    features: route.stops.map(s => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [s.block.coordinate.lng, s.block.coordinate.lat] },
+      properties: { id: s.block.id, order: String(s.order), score: s.block.riskScore },
+    })),
+  });
+  depotSrc.setData({
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [route.depot.lng, route.depot.lat] },
+    properties: { name: route.depot.name },
+  });
 }
 
 function applyFeatureStateDelta(
