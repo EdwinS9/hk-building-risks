@@ -24,7 +24,12 @@
       "Bash(brew install *)",
       "Bash(npm run *)",
       "Bash(git stash *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(grep -v \"^$\")",
+      "Bash(supabase --version)",
+      "Read(//Users/magnussaurbier/.supabase/**)",
+      "Bash(npx supabase *)",
+      "Bash(python3)"
     ]
   }
 }

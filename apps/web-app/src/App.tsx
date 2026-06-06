@@ -211,9 +211,7 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
             open={triageOpen}
             onToggle={() => setTriageOpen(o => !o)}
             bandFilter={bandFilter}
-            statusFilter={statusFilter}
             onToggleBand={toggleBand}
-            onToggleStatus={toggleStatus}
           />
           <BlockDetail
             block={selected}
