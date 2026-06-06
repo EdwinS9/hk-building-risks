@@ -11,3 +11,6 @@ __pycache__/
 *.pyc
 *:Zone.Identifier
 .bulk_download_cookiejar.txt
+insar/mintpy/
+model/insar_features.csv
+model/insar_layer.geojson
