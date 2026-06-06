@@ -853,6 +853,25 @@ input {
   box-shadow: 0 0 6px var(--chip-color);
 }
 
+.score-histogram {
+  padding: 4px 14px 8px;
+  border-bottom: 1px solid var(--border-faint);
+}
+.score-histogram-svg {
+  display: block;
+  width: 100%;
+  height: 44px;
+}
+.score-histogram-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  padding-top: 2px;
+  letter-spacing: 0.04em;
+}
+
 .triage-sort {
   display: flex;
   align-items: center;

@@ -203,6 +203,7 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
           />
           <TriageQueue
             blocks={filteredBlocks}
+            allBlocks={blocks}
             totalCount={blocks.length}
             selectedId={selectedId}
             onSelect={handleSelect}
