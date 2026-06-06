@@ -1,4 +1,4 @@
-import { Home, AlertTriangle, Settings } from 'lucide-react';
+import { Home, Megaphone } from 'lucide-react';
 import type { Page } from '../types';
 
 interface Props {
@@ -8,8 +8,7 @@ interface Props {
 
 const tabs: { id: Page; label: string; Icon: typeof Home }[] = [
   { id: 'home', label: 'Home', Icon: Home },
-  { id: 'report', label: 'Report', Icon: AlertTriangle },
-  { id: 'settings', label: 'Settings', Icon: Settings },
+  { id: 'report', label: 'Report', Icon: Megaphone },
 ];
 
 export default function BottomNav({ current, onNavigate }: Props) {
@@ -22,7 +21,7 @@ export default function BottomNav({ current, onNavigate }: Props) {
           onClick={() => onNavigate(id)}
           aria-current={current === id ? 'page' : undefined}
         >
-          <Icon size={22} />
+          <Icon size={20} />
           <span>{label}</span>
         </button>
       ))}

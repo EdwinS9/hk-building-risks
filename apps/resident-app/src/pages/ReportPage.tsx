@@ -1,8 +1,9 @@
 import { useState, useRef } from 'react';
-import { Camera, Send, CheckCircle, AlertTriangle, X } from 'lucide-react';
+import { Camera, Send, AlertTriangle, X } from 'lucide-react';
 import type { Page } from '../types';
 import { getHomeBuilding } from '../lib/storage';
 import { supabase } from '../lib/supabase';
+import { MegaphoneDoodle, SuccessDoodle } from '../components/Illustrations';
 
 interface Props {
   onNavigate: (page: Page) => void;
@@ -22,9 +23,11 @@ export default function ReportPage({ onNavigate }: Props) {
   if (!home) {
     return (
       <div className="page center-content">
-        <AlertTriangle size={48} className="muted-icon" />
-        <h2>No building selected</h2>
-        <p className="muted">Please select your home building in Settings first.</p>
+        <MegaphoneDoodle size={150} />
+        <h2>Pick your building first</h2>
+        <p className="muted">
+          We need to know where you live before you can send a report.
+        </p>
         <button className="btn-primary" onClick={() => onNavigate('settings')}>
           Go to Settings
         </button>
@@ -94,9 +97,9 @@ export default function ReportPage({ onNavigate }: Props) {
   if (status === 'success') {
     return (
       <div className="page center-content">
-        <CheckCircle size={64} className="success-icon" />
-        <h2>Report submitted</h2>
-        <p className="muted">Thank you. Your report has been received.</p>
+        <SuccessDoodle size={150} />
+        <h2>Report sent! 🎉</h2>
+        <p className="muted">Thank you for helping keep your building safe. Your report has been received.</p>
         <button
           className="btn-primary"
           onClick={() => {
@@ -117,8 +120,8 @@ export default function ReportPage({ onNavigate }: Props) {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Report an Issue</h1>
-        <p className="muted">{home.address}</p>
+        <span className="eyebrow">{home.address}</span>
+        <h1 style={{ marginTop: 12 }}>Report an Issue</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="report-form">
