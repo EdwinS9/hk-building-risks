@@ -842,9 +842,16 @@ function calculateRiskScore(block: Block): number {
 
 export async function recalculateRiskScores(): Promise<{ updated: number; total: number }> {
   const { a1, a2, a3 } = getScoreParams();
-  const { data, error } = await supabase.rpc('recalculate_block_risk_scores', {
+
+  // Try the parameterised sigmoid version first; fall back to the old
+  // parameterless overload if the migration hasn't been applied yet.
+  let result = await supabase.rpc('recalculate_block_risk_scores', {
     p_a1: a1, p_a2: a2, p_a3: a3,
   });
+  if (result.error?.code === 'PGRST202') {
+    result = await supabase.rpc('recalculate_block_risk_scores' as any);
+  }
+  const { data, error } = result;
   if (error) throw error;
 
   const updated = typeof data === 'number' ? data : Number(data ?? 0);
