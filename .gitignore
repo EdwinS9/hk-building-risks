@@ -1,21 +1,193 @@
-# ===== Dependencies =====
+###############################################################################
+# HK Building Risk — monorepo .gitignore
+# Apps: Node/TS (Vite, React)   |   ML: Python (uv, PyTorch, Jupyter, geo)
+# NOTE: this repo deliberately TRACKS some data artifacts — do not add blanket
+#       *.csv / *.sql / *.png / *.pptx ignores here (see ml/, docs/).
+###############################################################################
+
+# =============================================================================
+# Node / JavaScript / TypeScript
+# =============================================================================
 node_modules/
+jspm_packages/
+bower_components/
 .pnp
 .pnp.js
-.yarn/install-state.gz
-.yarn/cache
-.yarn/build-state.yml
-.yarn/unplugged
+.pnp.cjs
+.pnp.loader.mjs
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
 .pnpm-store/
+.npm/
+.node_repl_history
+*.tgz
+package-lock.json.*
+.lock-wscript
 
-# ===== Build output =====
+# ----- Build output -----
 dist/
+dist-ssr/
 build/
 out/
+lib-cov/
 .vite/
+.vite-inspect/
 *.tsbuildinfo
+tsconfig.tsbuildinfo
+.rollup.cache/
+.swc/
 
-# ===== Logs =====
+# ----- Framework / bundler caches -----
+.next/
+.nuxt/
+.svelte-kit/
+.astro/
+.docusaurus/
+.cache/
+.parcel-cache/
+.turbo/
+.rspack/
+.webpack/
+.storybook-out/
+storybook-static/
+
+# ----- Lint / format caches -----
+.eslintcache
+.stylelintcache
+.prettiercache
+
+# ----- PWA / service worker (resident-app) -----
+dev-dist/
+sw.js
+workbox-*.js
+**/public/sw.js
+**/public/workbox-*.js
+
+# =============================================================================
+# Testing & coverage
+# =============================================================================
+coverage/
+*.lcov
+.nyc_output/
+.vitest-cache/
+.vitest-result.json
+test-results/
+playwright-report/
+playwright/.cache/
+blob-report/
+__snapshots__/*.snap.new
+.cypress/screenshots/
+.cypress/videos/
+
+# =============================================================================
+# Python (uv / pip / venv)
+# =============================================================================
+.venv/
+venv/
+env/
+ENV/
+.python-version.local
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.pdm-python
+.pdm-build/
+__pypackages__/
+.uv/
+
+# ----- Python build / packaging -----
+*.egg
+*.egg-info/
+.eggs/
+develop-eggs/
+sdist/
+wheels/
+*.whl
+.installed.cfg
+MANIFEST
+
+# ----- Python tooling caches -----
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+.pytest_cache/
+.tox/
+.nox/
+.hypothesis/
+cython_debug/
+
+# =============================================================================
+# Jupyter / notebooks
+# =============================================================================
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+*-checkpoint.ipynb
+profile_default/
+ipython_config.py
+.jupyter/
+
+# =============================================================================
+# ML / data science artifacts
+# =============================================================================
+# Model checkpoints & weights (large binaries — regenerable)
+*.ckpt
+*.pt
+*.pth
+*.onnx
+*.pb
+*.tflite
+*.safetensors
+*.h5
+*.hdf5
+*.joblib
+*.pkl
+*.pickle
+*.npz
+*.npy
+
+# Experiment trackers / logs
+mlruns/
+wandb/
+runs/
+lightning_logs/
+tensorboard/
+events.out.tfevents.*
+catboost_info/
+
+# Gradio / demo apps
+.gradio/
+flagged/
+gradio_cached_examples/
+
+# =============================================================================
+# Geospatial / InSAR (large raster & SAR products — regenerable)
+# =============================================================================
+*.tif
+*.tiff
+*.geotiff
+*.nc
+*.grd
+*.SAFE/
+*.zip.aux.xml
+*.he5
+mintpy_output/
+hyp3_products/
+**/insar/products/
+
+# =============================================================================
+# Logs
+# =============================================================================
 logs/
 *.log
 npm-debug.log*
@@ -23,76 +195,130 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+.pnpm-debug.log*
+debug.log
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-# ===== Environment / secrets =====
+# =============================================================================
+# Environment & secrets
+# =============================================================================
 .env
+.env.*
+!.env.example
+!.env.*.example
 .env.local
 .env.*.local
-.env.development.local
-.env.test.local
-.env.production.local
+.envrc
 *.pem
 *.key
 *.crt
+*.p12
+*.pfx
+*.keystore
 secrets/
+.secrets/
+credentials.json
+service-account*.json
+gha-creds-*.json
 
-# ===== Test & coverage =====
-coverage/
-*.lcov
-.nyc_output/
-.vitest-cache/
-test-results/
-playwright-report/
-playwright/.cache/
+# =============================================================================
+# Supabase (also see supabase/.gitignore)
+# =============================================================================
+.branches/
+supabase/.temp/
+supabase/.branches/
 
-# ===== Caches =====
-.cache/
-.parcel-cache/
-.eslintcache
-.stylelintcache
-.turbo/
-.next/
-.nuxt/
+# =============================================================================
+# Deploy / hosting / IaC
+# =============================================================================
+.vercel
+.netlify
+.firebase/
+.firebaserc.local
+.serverless/
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+.sst/
+cdk.out/
 
-# ===== Editor / IDE =====
+# =============================================================================
+# Editor / IDE
+# =============================================================================
 .idea/
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json.example
+!.vscode/launch.json.example
+*.code-workspace
+.history/
+.ionide/
 *.swp
 *.swo
+*.swn
 *~
-.history/
+.\#*
+\#*\#
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
 
-# ===== OS junk =====
+# =============================================================================
+# OS junk
+# =============================================================================
 .DS_Store
 .DS_Store?
+.AppleDouble
+.LSOverride
 ._*
 .Spotlight-V100
+.Spotlight-V100/
 .Trashes
+.fseventsd
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+Icon?
 ehthumbs.db
+ehthumbs_vista.db
 Thumbs.db
+Thumbs.db:encryptable
 Desktop.ini
+$RECYCLE.BIN/
+*.lnk
 
-# ===== Local tooling =====
-.vercel
-.netlify
-.firebase/
-.serverless/
+# =============================================================================
+# Archives & temp scratch (large, usually transient)
+# =============================================================================
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*.pid
+*.seed
+*.pid.lock
+.tmp/
+tmp/
+temp/
 
-# ===== Project-specific =====
-# Local notes / scratch files
+# =============================================================================
+# Project-specific
+# =============================================================================
+# Local scratch notes
 TODO.local.md
 NOTES.local.md
-.DS_Store
-ml/data-analysis/insar/products
+*.local.md
 
-# ===== ML pipelines (ml/, Python) =====
-.venv/
-__pycache__/
-*.pyc
+# Crack-detection working dirs (regenerable training data / outputs)
 ml/cracks/data/
 ml/cracks/artifacts/
 ml/cracks/examples/
 ml/cracks/.gradio/
 ml/cracks/flagged/
+
+# InSAR intermediate products
+ml/data-analysis/insar/products/
+ml/insar/products/
