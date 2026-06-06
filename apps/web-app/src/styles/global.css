@@ -853,6 +853,25 @@ input {
   box-shadow: 0 0 6px var(--chip-color);
 }
 
+.score-histogram {
+  padding: 4px 14px 8px;
+  border-bottom: 1px solid var(--border-faint);
+}
+.score-histogram-svg {
+  display: block;
+  width: 100%;
+  height: 44px;
+}
+.score-histogram-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  padding-top: 2px;
+  letter-spacing: 0.04em;
+}
+
 .triage-sort {
   display: flex;
   align-items: center;
@@ -1969,6 +1988,110 @@ input {
   border-radius: 2px;
   color: var(--text-1);
 }
+
+/* ── Risk model parameter sliders ── */
+.settings-formula {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  padding: 6px 10px;
+  background: var(--inset-bg);
+  border: 1px solid var(--border-faint);
+  border-radius: 4px;
+  color: var(--text-1);
+  letter-spacing: 0.02em;
+}
+
+.risk-param-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.risk-param-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.risk-param-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.risk-param-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-1);
+  letter-spacing: 0.04em;
+}
+
+.risk-param-value {
+  font-size: 13px;
+  color: var(--accent);
+  min-width: 48px;
+  text-align: right;
+}
+
+.risk-param-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-faint);
+  outline: none;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.risk-param-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: 2px solid var(--bg-0);
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+
+.risk-param-bounds {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.risk-param-desc {
+  font-size: 11px;
+  color: var(--text-2);
+  line-height: 1.5;
+  margin-top: 2px;
+}
+
+.risk-param-reset {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 6px 12px;
+  background: none;
+  border: 1px solid var(--border-faint);
+  border-radius: 4px;
+  color: var(--text-2);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 120ms, border-color 120ms;
+}
+.risk-param-reset:hover:not(:disabled) {
+  color: var(--text-0);
+  border-color: var(--border);
+}
+.risk-param-reset:disabled { opacity: 0.4; cursor: default; }
 
 /* Theme cards */
 .theme-grid {

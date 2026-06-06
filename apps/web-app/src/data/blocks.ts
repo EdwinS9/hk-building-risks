@@ -4,7 +4,8 @@
 // store API (getBlocks / subscribe / getBlockById) keeps consumers away from
 // direct Supabase calls.
 import { supabase } from '../lib/supabase';
-import { bandForScore, buildingAgeScore, inspectionAgeScore, type RiskBand } from '../lib/constants';
+import { bandForScore, type RiskBand } from '../lib/constants';
+import { getScoreParams } from '../lib/scoreParams';
 
 export type BlockStatus = 'Not scheduled' | 'Inspected';
 
@@ -814,19 +815,43 @@ export async function generateMockInspections(
   return { inserted };
 }
 
+
+function sigmoid(x: number): number {
+  return 1 / (1 + Math.exp(-Math.max(-700, Math.min(700, x))));
+}
+
 function calculateRiskScore(block: Block): number {
-  const factorScores = block.factors?.map(f => f.contribution * 100) ?? [];
-  const scores = [
-    ...factorScores,
-    inspectionAgeScore(block.lastInspected),
-    buildingAgeScore(block.completionDate),
-  ];
-  const average = scores.reduce((sum, score) => sum + score, 0) / scores.length;
-  return Math.round(average * 100) / 100;
+  const { a1, a2, a3 } = getScoreParams();
+
+  const ba = block.completionDate
+    ? (Date.now() - new Date(block.completionDate).getTime()) / MS_PER_YEAR
+    : 0;
+
+  const li = block.lastInspected
+    ? (Date.now() - new Date(block.lastInspected).getTime()) / MS_PER_YEAR
+    : 100;
+
+  const factors = block.factors ?? [];
+  const sar = factors.length > 0
+    ? factors.reduce((sum, f) => sum + f.contribution, 0) / factors.length
+    : 0;
+
+  const x = a1 * (ba - 30) + a2 * (li - 10) + a3 * sar;
+  return Math.round(sigmoid(x) * 10000) / 100; // 2 dp, 0–100
 }
 
 export async function recalculateRiskScores(): Promise<{ updated: number; total: number }> {
-  const { data, error } = await supabase.rpc('recalculate_block_risk_scores');
+  const { a1, a2, a3 } = getScoreParams();
+
+  // Try the parameterised sigmoid version first; fall back to the old
+  // parameterless overload if the migration hasn't been applied yet.
+  let result = await supabase.rpc('recalculate_block_risk_scores', {
+    p_a1: a1, p_a2: a2, p_a3: a3,
+  });
+  if (result.error?.code === 'PGRST202') {
+    result = await supabase.rpc('recalculate_block_risk_scores' as any);
+  }
+  const { data, error } = result;
   if (error) throw error;
 
   const updated = typeof data === 'number' ? data : Number(data ?? 0);
