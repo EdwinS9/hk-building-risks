@@ -485,6 +485,11 @@ h2 { font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em; line-height: 
   animation: spin .7s linear infinite;
   display: inline-block;
 }
+.spinner-accent {
+  border-color: var(--accent-soft);
+  border-top-color: var(--accent);
+}
+
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Banners ── */

@@ -10,19 +10,20 @@ interface Props {
   onNavigate: (page: Page) => void;
 }
 
-const s = (v: unknown) => (typeof v === 'string' ? v : v == null ? '' : String(v));
-
 const themeOptions: { id: ThemeMode; label: string; Icon: typeof Sun }[] = [
   { id: 'light', label: 'Light', Icon: Sun },
   { id: 'dark', label: 'Dark', Icon: Moon },
   { id: 'system', label: 'System', Icon: Monitor },
 ];
 
+// PostgREST `.or()` treats commas and parentheses as syntax — strip them from
+// user input so a stray character can't break the filter.
+const sanitize = (q: string) => q.replace(/[(),]/g, ' ').trim();
+
 export default function SettingsPage({ onNavigate }: Props) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Block[]>([]);
-  const [allBlocks, setAllBlocks] = useState<Block[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [open, setOpen] = useState(false);
   const [home, setHome] = useState(getHomeBuilding);
@@ -30,37 +31,44 @@ export default function SettingsPage({ onNavigate }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const { mode, setMode } = useTheme();
 
+  // Server-side search: the buildings table has ~51k rows, far past PostgREST's
+  // 1000-row response cap, so we query the database per keystroke (debounced)
+  // instead of loading everything into the browser.
   useEffect(() => {
-    async function fetchBlocks() {
+    const q = sanitize(query);
+    if (q.length < 2) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+
+    setSearching(true);
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const pattern = `%${q}%`;
       const { data, error } = await supabase
         .from('resident_buildings')
         .select('id, address, district, object_id')
-        .order('address');
+        .or(`address.ilike.${pattern},district.ilike.${pattern},object_id.ilike.${pattern}`)
+        .order('address')
+        .limit(30);
+
+      if (cancelled) return;
       if (error) {
         setLoadError(true);
-      } else if (data) {
-        setAllBlocks(data as Block[]);
+        setResults([]);
+      } else {
+        setLoadError(false);
+        setResults((data ?? []) as Block[]);
       }
-      setLoading(false);
-    }
-    fetchBlocks();
-  }, []);
+      setSearching(false);
+    }, 250);
 
-  useEffect(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) {
-      setResults([]);
-      return;
-    }
-    setResults(
-      allBlocks
-        .filter((b) => {
-          const haystack = `${s(b.address)} ${s(b.district)} ${s(b.object_id)}`.toLowerCase();
-          return haystack.includes(q);
-        })
-        .slice(0, 30)
-    );
-  }, [query, allBlocks]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
 
   function selectBuilding(block: Block) {
     setHomeBuilding({ id: block.id, address: block.address, district: block.district });
@@ -122,9 +130,8 @@ export default function SettingsPage({ onNavigate }: Props) {
               ref={inputRef}
               type="search"
               className="search-input"
-              placeholder={loading ? 'Loading buildings…' : 'Search by address or district…'}
+              placeholder="Search by address or district…"
               value={query}
-              disabled={loading}
               onChange={(e) => {
                 setQuery(e.target.value);
                 setOpen(true);
@@ -165,7 +172,14 @@ export default function SettingsPage({ onNavigate }: Props) {
             </ul>
           )}
 
-          {open && query.trim() && results.length === 0 && !loading && (
+          {open && searching && results.length === 0 && (
+            <div className="no-results">
+              <span className="spinner spinner-accent" />
+              <p style={{ marginTop: 8 }}>Searching…</p>
+            </div>
+          )}
+
+          {open && !searching && sanitize(query).length >= 2 && results.length === 0 && (
             <div className="no-results">
               <SearchDoodle size={90} />
               <p style={{ marginTop: 8 }}>No buildings found for “{query}”</p>
