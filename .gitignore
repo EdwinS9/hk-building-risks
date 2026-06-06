@@ -12,3 +12,5 @@ __pycache__/
 *:Zone.Identifier
 .bulk_download_cookiejar.txt
 download-all-*.py
+Data Analysis/.DS_Store
+Data Analysis/insar/products
