@@ -11,7 +11,9 @@ Run (env active): python insar/velocity_gradient.py
 Inputs : insar/mintpy/velocity.tif (m/yr, EPSG:32649)
 Outputs:
   insar/mintpy/velocity_gradient.tif    gradient magnitude raster, mm/yr per 100 m
-  model/insar_features.csv              + insar_velocity_gradient column (per OBJECTID)
+  model/insar_features.csv              + insar_velocity_gradient (mm/yr/100m), insar_gradient_score
+                                          (0-100, capped-linear @ p95, NULL where no signal),
+                                          insar_has_data (1/0) for weighted-sum renormalization
   model/insar_scores.csv                object_id, score_name, score_value  (scores-table ready)
   model/insar_scores.sql                drop-in upsert into public.scores (joined on object_id)
 """
@@ -55,22 +57,31 @@ def main():
         grad_b = np.array([s[0] for s in ds.sample(zip(xs, ys))], dtype=float)
     grad_b[~np.isfinite(grad_b)] = np.nan
 
-    # merge gradient column into the feature table (idempotent)
-    feat = pd.read_csv(FEATURES)
-    gdf = pd.DataFrame({"OBJECTID": b.OBJECTID.values, "insar_velocity_gradient": grad_b})
-    feat = feat.drop(columns=["insar_velocity_gradient"], errors="ignore").merge(gdf, on="OBJECTID", how="left")
-    feat.to_csv(FEATURES, index=False)
-
-    # normalize to a [0,1] score_value: p95 cap so typical buildings read low and only
-    # genuinely high-differential ones approach 1.0 (the factor bar in the detail panel).
+    # capped-linear score in [0,1]: p95 cap so a stable building reads ~0 and only
+    # genuinely high-differential ones approach 1. NaN (no signal) is kept NaN, NOT
+    # filled, so the later weighted sum can renormalize over the factors each building
+    # actually has (insar_has_data flags presence). Web-app uses x1, the model uses x100.
     valid = np.isfinite(grad_b)
     cap = float(np.nanpercentile(grad_b[valid], 95)) if valid.any() else 1.0
-    score = np.clip(grad_b / cap, 0.0, 1.0)
+    score01 = np.where(valid, np.clip(grad_b / cap, 0.0, 1.0), np.nan)
+
+    # merge feature columns into the table (idempotent)
+    feat = pd.read_csv(FEATURES)
+    gdf = pd.DataFrame({
+        "OBJECTID": b.OBJECTID.values,
+        "insar_velocity_gradient": grad_b,
+        "insar_gradient_score": np.round(score01 * 100.0, 2),   # 0-100, NULL where no signal
+        "insar_has_data": valid.astype(int),
+    })
+    feat = feat.drop(columns=["insar_velocity_gradient", "insar_gradient_score", "insar_has_data"],
+                     errors="ignore").merge(gdf, on="OBJECTID", how="left")
+    feat["insar_has_data"] = feat["insar_has_data"].fillna(0).astype(int)
+    feat.to_csv(FEATURES, index=False)
 
     out = pd.DataFrame({
         "object_id": b.OBJECTID.values[valid].astype(str),
         "score_name": SCORE_NAME,
-        "score_value": np.round(score[valid], 4),
+        "score_value": np.round(score01[valid], 4),
     })
     out.to_csv(SCORES_CSV, index=False)
 
@@ -94,7 +105,8 @@ on conflict (block_id, score_name) do update set score_value = excluded.score_va
 
     print(f"gradient raster : {GRAD_TIF}  (valid {int(valid.sum())} px-samples, "
           f"median {np.nanmedian(grad_b):.2f}, p95 cap {cap:.2f} mm/yr/100m)")
-    print(f"feature column  : {FEATURES}  (+insar_velocity_gradient on {int(valid.sum())}/{len(feat)} buildings)")
+    print(f"feature columns : {FEATURES}  (+insar_velocity_gradient, insar_gradient_score (0-100), "
+          f"insar_has_data; signal on {int(valid.sum())}/{len(feat)} buildings)")
     print(f"scores artifact : {SCORES_CSV} + {SCORES_SQL}  ({len(out)} rows, score_name='{SCORE_NAME}')")
 
 
