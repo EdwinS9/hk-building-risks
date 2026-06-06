@@ -9,6 +9,8 @@ __pycache__/
 *.pyc
 *:Zone.Identifier
 .bulk_download_cookiejar.txt
+insar/mintpy/
+model/insar_layer.geojson
 download-all-*.py
 Data Analysis/.DS_Store
 Data Analysis/insar/products
