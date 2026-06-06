@@ -11,10 +11,10 @@ backend.
 - Triage queue (left): search, sort by score / name / district, filter by
   risk band and inspection status.
 - Click a block (map or list) → opens the detail panel and flies to it.
-- Inspect the score breakdown when available; mark blocks as Scheduled or
-  Inspected — the dashboard reacts immediately.
+- Inspect the score breakdown when available; completed inspections flow into
+  the inspected log and update block status.
 - Stale scores (older than 14 days) are flagged in both the list and detail.
-- View **Inspected Log**, **Schedule**, and **Raw Data** as dedicated pages.
+- View **Inspected Log** and **Raw Data** as dedicated pages.
 - **Settings** lets you switch theme (system / dark / light / high-contrast).
 
 ## Quick start
@@ -50,12 +50,14 @@ supabase db push
 This applies the migrations in `supabase/migrations/`:
 
 - `20260606120000_initial_schema.sql` — tables (`blocks`, `scores`,
-  `inspections`, `schedule`), the `blocks_with_status` view, and triggers.
+  `inspections`, legacy `schedule`), the `blocks_with_status` view, and triggers.
 - `20260606120100_security_policies.sql` — RLS policies. **Anonymous users
-  get zero access.** Authenticated users can read everything and can write
-  inspections, schedule, and the per-block note. All other columns
+  get zero access.** Authenticated users can read blocks, scores, and
+  inspections, and can write inspections and the per-block note. All other columns
   (coordinates, risk score, identifiers) are read-only from the client and
   managed by the upstream scoring pipeline / admin import.
+- `20260606120300_remove_schedule.sql` — removes the scheduling table and
+  derives status from inspection history only.
 
 ### 3. (Optional) Seed with mock data
 
@@ -104,25 +106,23 @@ VITE_MAPTILER_KEY=your_key
 
 All reads and mutations go through `src/data/blocks.ts`. That module:
 
-- Reads from the `blocks_with_status` view (joins inspections + schedule to
-  derive status / last_inspected / next_scheduled).
+- Reads from the `blocks_with_status` view to derive status / last_inspected.
 - Joins `scores` to populate the per-factor breakdown in the detail panel.
-- Routes "Schedule inspection" / "Mark inspected" through inserts on the
-  `schedule` / `inspections` tables. `created_by` is stamped server-side by
-  a `BEFORE INSERT` trigger to `auth.uid()` — the client cannot impersonate
-  another user.
+- Imports inspection rows into the `inspections` table. `created_by` is
+  stamped server-side by a `BEFORE INSERT` trigger to `auth.uid()` — the client
+  cannot impersonate another user.
 - The UI does not compute or guess risk scores; it consumes them.
 
 ## Security model
 
 - Sign-up is **disabled** at the auth config level (`enable_signup = false`).
-- All four data tables have RLS enabled.
+- All data tables have RLS enabled.
 - Anonymous role: **no policies → no access.**
-- Authenticated role: SELECT on all tables, INSERT on inspections + schedule,
-  and column-scoped UPDATE on `blocks.note` only. Any attempt to update a
-  different column on `blocks` is rejected by a row-level trigger.
-- `created_by` on inspections / schedule is overridden server-side, so a
-  malicious client can't attribute events to other users.
+- Authenticated role: SELECT on blocks, scores, and inspections, INSERT on
+  inspections, and column-scoped UPDATE on `blocks.note` only. Any attempt to
+  update a different column on `blocks` is rejected by a row-level trigger.
+- `created_by` on inspections is overridden server-side, so a malicious client
+  can't attribute events to other users.
 - The frontend never sees a service-role key; only the anon key is used.
 
 ## File tree (excerpt)
@@ -145,7 +145,7 @@ hk-building-risks/
 │   ├── data/blocks.ts         # all data access (Supabase-backed)
 │   ├── components/
 │   │   ├── auth/LoginScreen.tsx
-│   │   ├── views/*            # Inspected log, Schedule, Data, Settings
+│   │   ├── views/*            # Inspected log, Settings, Account
 │   │   ├── MapView.tsx
 │   │   ├── MapControls.tsx
 │   │   ├── TopBar.tsx

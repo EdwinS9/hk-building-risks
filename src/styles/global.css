@@ -4,7 +4,6 @@
   --moderate: #F5B642;
   --low: #3FB6B0;
   --inspected: #3FB6B0;
-  --scheduled: #6ec1ff;
   --not-scheduled: #aab4c4;
   --glass-blur: 14px;
   --mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
@@ -77,7 +76,6 @@
   --shadow-side: 6px 0 20px rgba(20, 30, 60, 0.08);
   --attrib-bg: rgba(255, 255, 255, 0.8);
   --inspected: #16998a;
-  --scheduled: #2563eb;
   --not-scheduled: #6c7689;
 }
 
@@ -117,7 +115,6 @@
   --moderate: #ffd23f;
   --low: #00ff95;
   --inspected: #00ff95;
-  --scheduled: #00d4ff;
   --not-scheduled: #ffffff;
   --bg-atmos: 0;
 }
@@ -735,6 +732,47 @@ input {
   align-items: flex-start;
   gap: 10px;
 }
+.triage-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.risk-calc-btn {
+  height: 24px;
+  padding-inline: 8px;
+}
+.risk-calc-status {
+  margin: 0 14px 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 26px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--inset-bg-soft);
+  color: var(--text-1);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.risk-calc-status svg { flex-shrink: 0; }
+.risk-calc-status .spin { animation: spin 900ms linear infinite; }
+.risk-calc-working {
+  border-color: var(--accent-dim);
+  color: var(--text-0);
+}
+.risk-calc-working svg { color: var(--accent); }
+.risk-calc-done {
+  border-color: rgba(63, 182, 176, 0.4);
+  background: rgba(63, 182, 176, 0.08);
+  color: var(--low);
+}
+.risk-calc-error {
+  border-color: rgba(232, 69, 69, 0.4);
+  background: rgba(232, 69, 69, 0.08);
+  color: var(--critical);
+}
 
 .panel-label {
   font-size: 10px;
@@ -911,11 +949,7 @@ input {
   color: var(--text-dim);
 }
 
-.row-status { letter-spacing: 0.1em; }
 .row-inspected { color: var(--inspected); letter-spacing: 0.04em; white-space: nowrap; }
-.status-not-scheduled { color: var(--not-scheduled); }
-.status-scheduled { color: var(--scheduled); }
-.status-inspected { color: var(--inspected); }
 
 /* scrollbar */
 .triage-list::-webkit-scrollbar { width: 6px; }
@@ -1399,7 +1433,7 @@ input {
   .legend { left: 308px; }
 }
 
-/* ===== Pages (Inspected Log, Schedule, Data) =====
+/* ===== Pages (Inspected Log, Data) =====
    Full-bleed views that replace the map. Designed to sit below the
    topbar, fill the rest of the viewport, and feel like distinct pages
    instead of overlays. */
@@ -1535,10 +1569,6 @@ input {
 .inspected-table .data-trow {
   grid-template-columns: 2.4fr 1fr 0.6fr 0.8fr 1fr 0.9fr;
 }
-.schedule-table .data-thead,
-.schedule-table .data-trow {
-  grid-template-columns: 2.4fr 1fr 0.6fr 0.8fr 1.4fr;
-}
 .raw-table .data-thead,
 .raw-table .data-trow {
   grid-template-columns: 0.6fr 2.2fr 1.2fr 0.8fr 0.8fr 0.5fr 0.8fr 1fr 1fr;
@@ -1569,7 +1599,7 @@ input {
   transition: background 120ms;
 }
 .data-trow:hover { background: var(--tbl-stripe); }
-/* Same off-screen skip for the raw-data / log / schedule tables. */
+/* Same off-screen skip for the raw-data / log tables. */
 .data-trow {
   content-visibility: auto;
   contain-intrinsic-size: auto 42px;
@@ -1588,11 +1618,6 @@ input {
 }
 .dt-dim { color: var(--text-2); font-size: 11.5px; }
 .dt-band { letter-spacing: 0.16em; font-size: 10px; font-weight: 600; }
-.dt-actions {
-  display: flex;
-  gap: 6px;
-  justify-content: flex-end;
-}
 .ta-r { text-align: right; justify-self: end; }
 
 .data-json {

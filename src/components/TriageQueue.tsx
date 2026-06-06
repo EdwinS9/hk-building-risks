@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, ArrowDownUp, ChevronLeft, ChevronRight, ListFilter } from 'lucide-react';
+import {
+  Search,
+  ArrowDownUp,
+  ChevronLeft,
+  ChevronRight,
+  ListFilter,
+  Calculator,
+  Loader2,
+  CheckCircle2,
+  AlertTriangle,
+} from 'lucide-react';
 import type { Block, BlockStatus } from '../data/blocks';
-import { BLOCK_STATUSES } from '../data/blocks';
+import { BLOCK_STATUSES, recalculateRiskScores } from '../data/blocks';
 import { colorForBand, BAND_ORDER, type RiskBand } from '../lib/constants';
 
 interface Props {
@@ -19,6 +29,11 @@ interface Props {
 }
 
 type SortKey = 'score' | 'name' | 'district';
+type RecalcState =
+  | { phase: 'idle'; message: string }
+  | { phase: 'working'; message: string }
+  | { phase: 'done'; message: string }
+  | { phase: 'error'; message: string };
 
 // `lastInspected` is a plain YYYY-MM-DD date. Render it compactly, e.g. "12 Mar 2026".
 function formatInspectedDate(date: string): string {
@@ -34,6 +49,7 @@ export default function TriageQueue({
   const [query, setQuery] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('score');
   const [sortAsc, setSortAsc] = useState(false);
+  const [recalc, setRecalc] = useState<RecalcState>({ phase: 'idle', message: '' });
 
   // ── Virtualized list ──────────────────────────────────────────────────────
   // Rendering 60k DOM rows is what made the list scroll janky. We only mount
@@ -74,6 +90,28 @@ export default function TriageQueue({
     else { setSortKey(k); setSortAsc(k !== 'score'); }
   }
 
+  async function handleRecalculate() {
+    const ok = window.confirm(
+      `Calculate risk scores for all ${totalCount.toLocaleString()} blocks?\n\n` +
+      `This saves the average of every risk breakdown score plus the Last inspected score to the blocks table.`,
+    );
+    if (!ok) return;
+
+    setRecalc({ phase: 'working', message: 'Calculating risk scores…' });
+    try {
+      const result = await recalculateRiskScores();
+      setRecalc({
+        phase: 'done',
+        message: `${result.updated.toLocaleString()} / ${result.total.toLocaleString()} blocks updated`,
+      });
+    } catch (err) {
+      setRecalc({
+        phase: 'error',
+        message: err instanceof Error ? err.message : 'Could not calculate scores',
+      });
+    }
+  }
+
   const ROW_H = 52; // fixed row height (border-box) — keep in sync with .row CSS
   const OVERSCAN = 8;
   const total = rows.length;
@@ -91,10 +129,32 @@ export default function TriageQueue({
               <div className="panel-label">TRIAGE QUEUE</div>
               <div className="panel-sub">{rows.length} / {totalCount} blocks</div>
             </div>
-            <button className="collapse-btn" onClick={onToggle} title="Collapse panel">
-              <ChevronLeft size={14} />
-            </button>
+            <div className="triage-header-actions">
+              <button
+                className="action-btn tiny risk-calc-btn"
+                onClick={handleRecalculate}
+                disabled={recalc.phase === 'working'}
+                title="Calculate and save the aggregate risk score for every block"
+              >
+                {recalc.phase === 'working'
+                  ? <Loader2 size={11} className="spin" />
+                  : <Calculator size={11} />}
+                Calculate
+              </button>
+              <button className="collapse-btn" onClick={onToggle} title="Collapse panel">
+                <ChevronLeft size={14} />
+              </button>
+            </div>
           </div>
+
+          {recalc.phase !== 'idle' && (
+            <div className={`risk-calc-status risk-calc-${recalc.phase}`}>
+              {recalc.phase === 'working' && <Loader2 size={12} className="spin" />}
+              {recalc.phase === 'done' && <CheckCircle2 size={12} />}
+              {recalc.phase === 'error' && <AlertTriangle size={12} />}
+              <span>{recalc.message}</span>
+            </div>
+          )}
 
           <div className="triage-search">
             <Search size={13} />

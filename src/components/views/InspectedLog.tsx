@@ -1,7 +1,7 @@
-import { useMemo, useRef, useState } from 'react';
-import { ClipboardCheck, MapPin, Upload, Loader2, CheckCircle2, AlertTriangle, Sparkles } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ClipboardCheck, MapPin, Upload, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import type { Block } from '../../data/blocks';
-import { importInspections, generateMockInspections, type InspectionImportResult } from '../../data/blocks';
+import { importInspections, type InspectionImportResult } from '../../data/blocks';
 import { parseInspectionsCsv } from '../../lib/csvImport';
 import { colorForBand, relativeTime } from '../../lib/constants';
 
@@ -29,7 +29,20 @@ export default function InspectedLog({ blocks, onJump }: Props) {
   );
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const [imp, setImp] = useState<ImportState>({ phase: 'idle', message: '' });
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportH, setViewportH] = useState(0);
+
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const update = () => setViewportH(el.clientHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   async function handleFile(file: File) {
     setImp({ phase: 'working', message: `Reading ${file.name}…` });
@@ -81,37 +94,14 @@ export default function InspectedLog({ blocks, onJump }: Props) {
     if (file) void handleFile(file);
   }
 
-  async function handleGenerateMock() {
-    const ok = window.confirm(
-      `Generate mock inspection data for all ${blocks.length.toLocaleString()} blocks?\n\n` +
-      `This inserts one inspection per block, dated so its age matches the block's ` +
-      `current risk score (1 year ago for score 0, up to 30 years ago for score 100). ` +
-      `It cannot be undone.`,
-    );
-    if (!ok) return;
-
-    setImp({
-      phase: 'working',
-      message: 'Generating mock inspections…',
-      progress: { done: 0, total: blocks.length },
-    });
-    try {
-      const result = await generateMockInspections((done, total) => {
-        setImp(prev => ({ ...prev, phase: 'working', progress: { done, total } }));
-      });
-      setImp({
-        phase: 'done',
-        message: `${result.inserted.toLocaleString()} mock inspections generated from risk scores.`,
-      });
-    } catch (err) {
-      setImp({
-        phase: 'error',
-        message: err instanceof Error ? err.message : 'Generation failed.',
-      });
-    }
-  }
-
   const busy = imp.phase === 'working';
+  const ROW_H = 46;
+  const OVERSCAN = 10;
+  const total = rows.length;
+  const start = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
+  const visibleCount = Math.ceil((viewportH || 800) / ROW_H) + OVERSCAN * 2;
+  const end = Math.min(total, start + visibleCount);
+  const visible = rows.slice(start, end);
 
   return (
     <main className="page">
@@ -136,15 +126,6 @@ export default function InspectedLog({ blocks, onJump }: Props) {
             hidden
             onChange={onPick}
           />
-          <button
-            className="action-btn tiny"
-            onClick={handleGenerateMock}
-            disabled={busy}
-            title="Generate one mock inspection per block, dated from its risk score"
-          >
-            {busy ? <Loader2 size={11} className="spin" /> : <Sparkles size={11} />}
-            Generate mock
-          </button>
         </div>
         <div className="page-sub">
           Chronological record of completed inspections. Sorted by most recent.
@@ -187,27 +168,43 @@ export default function InspectedLog({ blocks, onJump }: Props) {
                 <div>INSPECTED</div>
                 <div className="ta-r">ACTION</div>
               </div>
-              <div className="data-tbody">
-                {rows.map(b => {
-                  const color = colorForBand(b.riskBand);
-                  return (
-                    <div className="data-trow" key={b.id}>
-                      <div className="dt-name">
-                        <span className="row-dot" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
-                        <span>{b.name}</span>
-                      </div>
-                      <div className="dt-dim">{b.district}</div>
-                      <div className="ta-r mono" style={{ color }}>{b.riskScore}</div>
-                      <div className="dt-band" style={{ color }}>{b.riskBand.toUpperCase()}</div>
-                      <div className="dt-dim mono">{relativeTime(b.lastInspected!)}</div>
-                      <div className="ta-r">
-                        <button className="action-btn tiny" onClick={() => onJump(b.id)}>
-                          <MapPin size={11} /> View on map
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div
+                className="data-tbody"
+                ref={bodyRef}
+                onScroll={e => setScrollTop(e.currentTarget.scrollTop)}
+              >
+                <div style={{ height: total * ROW_H, position: 'relative' }}>
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      transform: `translateY(${start * ROW_H}px)`,
+                    }}
+                  >
+                    {visible.map(b => {
+                      const color = colorForBand(b.riskBand);
+                      return (
+                        <div className="data-trow" key={b.id} style={{ height: ROW_H }}>
+                          <div className="dt-name">
+                            <span className="row-dot" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
+                            <span>{b.name}</span>
+                          </div>
+                          <div className="dt-dim">{b.district}</div>
+                          <div className="ta-r mono" style={{ color }}>{b.riskScore}</div>
+                          <div className="dt-band" style={{ color }}>{b.riskBand.toUpperCase()}</div>
+                          <div className="dt-dim mono">{relativeTime(b.lastInspected!)}</div>
+                          <div className="ta-r">
+                            <button className="action-btn tiny" onClick={() => onJump(b.id)}>
+                              <MapPin size={11} /> View on map
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

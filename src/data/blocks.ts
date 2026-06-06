@@ -1,16 +1,15 @@
 // ─── Data layer ────────────────────────────────────────────────────────────
-// All access to blocks/scores/inspections/schedule goes through this module
+// All access to blocks/scores/inspections goes through this module
 // so the rest of the app never depends on Supabase directly. The exported
-// store API (getBlocks / subscribe / getBlockById / updateBlockStatus) is
-// intentionally identical to the previous in-memory version so consumers
-// don't need to change.
+// store API (getBlocks / subscribe / getBlockById) keeps consumers away from
+// direct Supabase calls.
 import { supabase } from '../lib/supabase';
-import { bandForScore, type RiskBand } from '../lib/constants';
+import { bandForScore, inspectionAgeScore, type RiskBand } from '../lib/constants';
 
-export type BlockStatus = 'Not scheduled' | 'Scheduled' | 'Inspected';
+export type BlockStatus = 'Not scheduled' | 'Inspected';
 
 // Status filter order for the triage queue chips.
-export const BLOCK_STATUSES: BlockStatus[] = ['Not scheduled', 'Scheduled', 'Inspected'];
+export const BLOCK_STATUSES: BlockStatus[] = ['Not scheduled', 'Inspected'];
 
 export interface RiskFactor {
   label: string;
@@ -314,9 +313,6 @@ export function retryLoad(): void {
 }
 
 // ─── Mutations ─────────────────────────────────────────────────────────────
-// updateBlockStatus is the same external surface as before, but routes
-// through the inspections / schedule tables. The DB derives status via
-// the blocks_with_status view, so we refetch the affected block.
 
 async function refreshOne(blockId: string): Promise<void> {
   const [bRes, sRes] = await Promise.all([
@@ -342,33 +338,6 @@ async function refreshOne(blockId: string): Promise<void> {
   if (idx >= 0) _blocks[idx] = next;
   _byId.set(blockId, next);
   emit();
-}
-
-export async function updateBlockStatus(id: string, status: BlockStatus): Promise<void> {
-  const today = new Date().toISOString().slice(0, 10);
-  // For both inserts, created_by is set server-side by a BEFORE INSERT trigger
-  // to auth.uid(). Sending it from the client would be ignored anyway.
-  const { data: userRes } = await supabase.auth.getUser();
-  const uid = userRes.user?.id;
-  if (!uid) throw new Error('Not authenticated');
-
-  if (status === 'Scheduled') {
-    // Schedule one week out by default.
-    const inAWeek = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-    const { error } = await supabase
-      .from('schedule')
-      .insert({ block_id: id, scheduled_for: inAWeek, created_by: uid });
-    if (error) throw error;
-  } else if (status === 'Inspected') {
-    const { error } = await supabase
-      .from('inspections')
-      .insert({ block_id: id, inspected_at: today, created_by: uid });
-    if (error) throw error;
-  } else {
-    // 'Not scheduled' isn't a manual transition in the current UI; ignore.
-    return;
-  }
-  await refreshOne(id);
 }
 
 // Refetch a set of blocks (by id) and patch them into the cache in place,
@@ -524,6 +493,35 @@ export async function generateMockInspections(
   emit();
 
   return { inserted };
+}
+
+function calculateRiskScore(block: Block): number {
+  const factorScores = block.factors?.map(f => f.contribution * 100) ?? [];
+  const scores = [...factorScores, inspectionAgeScore(block.lastInspected)];
+  const average = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+  return Math.round(average * 100) / 100;
+}
+
+export async function recalculateRiskScores(): Promise<{ updated: number; total: number }> {
+  const { data, error } = await supabase.rpc('recalculate_block_risk_scores');
+  if (error) throw error;
+
+  const updated = typeof data === 'number' ? data : Number(data ?? 0);
+  const now = new Date().toISOString();
+  for (let i = 0; i < _blocks.length; i++) {
+    const score = calculateRiskScore(_blocks[i]);
+    _blocks[i] = {
+      ..._blocks[i],
+      riskScore: score,
+      riskBand: bandForScore(score),
+      scoreUpdatedAt: now,
+    };
+  }
+  _blocks.sort((a, b) => b.riskScore - a.riskScore);
+  for (const b of _blocks) _byId.set(b.id, b);
+  emit();
+
+  return { updated, total: _blocks.length };
 }
 
 export async function setBlockNote(id: string, note: string): Promise<void> {

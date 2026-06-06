@@ -1,7 +1,6 @@
 import {
   Map as MapIcon,
   ClipboardCheck,
-  CalendarClock,
   Settings,
   UserCircle2,
   LogOut,
@@ -11,7 +10,6 @@ import {
 export type ViewKey =
   | 'risk-monitor'
   | 'inspected-log'
-  | 'schedule'
   | 'settings'
   | 'account'
   | 'logout';
@@ -27,7 +25,6 @@ export interface ViewDef {
 export const VIEWS: ViewDef[] = [
   { key: 'risk-monitor',  label: 'Risk Monitor',  icon: MapIcon,         group: 'main' },
   { key: 'inspected-log', label: 'Inspected Log', icon: ClipboardCheck,  group: 'main' },
-  { key: 'schedule',      label: 'Schedule',      icon: CalendarClock,   group: 'main' },
   { key: 'settings',      label: 'Settings',      icon: Settings,        group: 'system' },
   { key: 'account',       label: 'Account',       icon: UserCircle2,     group: 'system' },
   { key: 'logout',        label: 'Logout',        icon: LogOut,          group: 'system' },
