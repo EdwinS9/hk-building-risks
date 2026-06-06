@@ -1,4 +1,3 @@
-model/scored.csv
 model/building_features.csv
 model/building_footprints.geojson
 model/*.log
