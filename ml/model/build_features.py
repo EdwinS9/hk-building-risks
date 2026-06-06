@@ -9,8 +9,8 @@ import math
 import numpy as np
 import pandas as pd
 
-DS1 = "Data Analysis/DS1_all.csv"
-DS2 = "Data Analysis/DS2_inspection.csv"
+DS1 = "data-analysis/DS1_all.csv"
+DS2 = "data-analysis/DS2_inspection.csv"
 OUT = "model/building_features.csv"
 MATCH_M = 60.0          # a notice within this distance flags its nearest building
 THIS_YEAR = 2026

@@ -24,7 +24,7 @@ from pyproj import Transformer
 
 VEL = "insar/mintpy/velocity.tif"
 GRAD_TIF = "insar/mintpy/velocity_gradient.tif"
-DS1 = "Data Analysis/DS1_all.csv"
+DS1 = "data-analysis/DS1_all.csv"
 FEATURES = "model/insar_features.csv"
 SCORES_CSV = "model/insar_scores.csv"
 SCORES_SQL = "model/insar_scores.sql"

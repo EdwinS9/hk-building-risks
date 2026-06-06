@@ -9,7 +9,7 @@ import json, urllib.parse, urllib.request, collections
 import pandas as pd
 
 API = "https://api.daac.asf.alaska.edu/services/search/param"
-DS1 = "Data Analysis/DS1_all.csv"
+DS1 = "data-analysis/DS1_all.csv"
 START, END = "2020-01-01T00:00:00Z", "2021-12-31T23:59:59Z"
 
 # 1. Building locations -> bounding box

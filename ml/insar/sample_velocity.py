@@ -21,7 +21,7 @@ import argparse
 import numpy as np
 import pandas as pd
 
-DS1 = "Data Analysis/DS1_all.csv"
+DS1 = "data-analysis/DS1_all.csv"
 OUT = "model/insar_features.csv"
 UNIT_SCALE = 1000.0   # MintPy velocity is m/yr; convert to mm/yr
 COH_FLOOR = 0.7       # below this, the velocity is unreliable (flagged, not dropped)

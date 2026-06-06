@@ -16,7 +16,7 @@ import argparse, json, sys, time
 import pandas as pd
 import requests
 
-DS1 = "Data Analysis/DS1_all.csv"
+DS1 = "data-analysis/DS1_all.csv"
 BASE = ("https://portal.csdi.gov.hk/server/rest/services/common/"
         "landsd_rcd_1637211194312_35158/MapServer/0/query")
 CELL = 0.04          # ~4.4 km tiles
