@@ -18,6 +18,7 @@ import pandas as pd
 
 FEATURES = "model/building_features.csv"
 INSAR = "model/insar_features.csv"   # optional; merged if present
+HEIGHT = "model/height_features.csv"  # optional; merged if present
 OUT = "model/scored.csv"
 MIN_AGE = 30
 SEED = 1
@@ -46,7 +47,17 @@ def main():
         cols_num += ["insar_velocity_mm_yr", "insar_missing"]
         print("merged InSAR feature.")
     else:
-        print("no InSAR yet (model/insar_features.csv missing); age+use+structure+district only.")
+        print("no InSAR yet (model/insar_features.csv missing).")
+
+    if pd.io.common.file_exists(HEIGHT):
+        h = pd.read_csv(HEIGHT)[["OBJECTID", "building_height_m", "storeys"]]
+        df = df.merge(h, on="OBJECTID", how="left")
+        for col in ["building_height_m", "storeys"]:
+            df[col] = df[col].fillna(df[col].median())
+        cols_num += ["building_height_m", "storeys"]
+        print("merged height features.")
+    else:
+        print("no height yet (model/height_features.csv missing).")
 
     # design matrix: standardized numerics + one-hot categoricals
     Xn = df[cols_num].astype(float)

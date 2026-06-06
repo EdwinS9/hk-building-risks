@@ -36,13 +36,17 @@ Hong Kong has a large stock of ageing high-density buildings operating under eco
 
 ## 4. Data Sources
 
-`TODO`: confirm and list with licences and refresh cadence. Candidates:
+**Confirmed and in use (verified, no auth):**
 
-- HK Buildings Department records (UBW orders, inspection notices).
-- Rating and Valuation Department building attributes (age, use, storeys).
-- Lands Department / OpenStreetMap — block polygons and address geocoding.
-- Fire Services Department notices.
-- Weather / flooding / slope (GEO landslip) data.
+- **Buildings (DS1):** BD "Building Information and Age Records", 51,037 buildings with lat/lon, occupation-permit date (age), use class, structure type, district. The spine.
+- **Labels (DS2):** BD "Statutory Notices on prescribed inspection/repair", 2,056 notices with coordinates. Joins exactly to DS1 (0 m). 2,029 positive buildings (3.98%).
+- **Footprints + height (CSDI):** Lands Dept "Building" layer `landsd_rcd_1637211194312_35158`, 342,350 polygons with `TopHeight`/`BaseHeight`/`Storeys`. ArcGIS REST bbox query (GeoJSON, EPSG:4326, paginated 3000/page) or ~397 MB full file. 99.9% of DS1 buildings matched a footprint. Pulled by `model/fetch_heights.py`.
+- **InSAR (ASF HyP3):** Sentinel-1 burst `011_021606_IW3`, 61 dates 2020 to 2021, processed to LOS velocity via MintPy. See `insar/`.
+
+**Candidate / not yet integrated:**
+
+- Fire Services Department notices (fire sub-factor).
+- Weather / flooding / slope (HKO rainfall, DSD flood, GEO landslip) data.
 
 ## 5. Scoring Granularity
 
