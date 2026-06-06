@@ -10,6 +10,7 @@ import {
   buildingAgeScore,
 } from '../lib/constants';
 import type { Block } from '../data/blocks';
+import { ROAD_CRACKS } from '../data/roadCracks';
 import MapControls from './MapControls';
 import { getResolvedTheme, subscribeTheme, type ResolvedTheme } from '../lib/theme';
 
@@ -154,7 +155,9 @@ export default function MapView(props: Props) {
       applyFeatureStateDelta(map, prevHoveredRef, hoveredId, 'hovered');
       pushSelected(map, selectedId ? blocks.find(b => b.id === selectedId) : null, heatmapFactorRef.current);
       applyHeatmapStyle(map, heatmapFactorRef.current);
+      setupCrackLayer(map);
       bindInteractions(map);
+      bindCrackInteractions(map);
       startPulse();
     });
 
@@ -337,6 +340,7 @@ export default function MapView(props: Props) {
     const onStyle = () => {
       loadedRef.current = true;
       setupLayers(m);
+      setupCrackLayer(m);
       pushData(m, blocks, heatmapFactorRef.current);
       // Reset delta refs so state re-applies cleanly onto the rebuilt source.
       prevSelectedRef.current = null;
@@ -386,6 +390,96 @@ export default function MapView(props: Props) {
       <MapControls mapRef={mapRef} />
     </>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Road-crack detections (drone-imagery layer). Static demo data placed at the
+// highest InSAR subsidence-gradient spots; click a marker to see the real model
+// heatmap and why it was flagged. See src/data/roadCracks.ts.
+// ---------------------------------------------------------------------------
+const CRACK_SEVERITY_COLOR: Record<string, string> = {
+  Severe: '#d11149', High: '#f3722c', Moderate: '#f9c74f', Low: '#90be6d',
+};
+
+function crackFeatureCollection(): GeoJSON.FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: ROAD_CRACKS.map(c => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [c.lng, c.lat] },
+      properties: { ...c },
+    })),
+  };
+}
+
+function setupCrackLayer(map: MLMap) {
+  if (map.getLayer('road-cracks-dot')) return;
+  if (!map.getSource('road-cracks')) {
+    map.addSource('road-cracks', { type: 'geojson', data: crackFeatureCollection() });
+  }
+  const sevColor: maplibregl.ExpressionSpecification = [
+    'match', ['get', 'severity'],
+    'Severe', CRACK_SEVERITY_COLOR.Severe,
+    'High', CRACK_SEVERITY_COLOR.High,
+    'Moderate', CRACK_SEVERITY_COLOR.Moderate,
+    'Low', CRACK_SEVERITY_COLOR.Low,
+    '#f3722c',
+  ];
+  // Hollow alert ring plus a solid centre dot: a "target" look distinct from
+  // the flat risk dots, sitting on top of the blocks layers.
+  map.addLayer({
+    id: 'road-cracks-ring', type: 'circle', source: 'road-cracks',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 9, 14, 13, 16, 16],
+      'circle-color': 'rgba(0,0,0,0)',
+      'circle-stroke-color': sevColor,
+      'circle-stroke-width': 3,
+      'circle-stroke-opacity': 0.95,
+    },
+  });
+  map.addLayer({
+    id: 'road-cracks-dot', type: 'circle', source: 'road-cracks',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 3.5, 14, 5, 16, 6.5],
+      'circle-color': sevColor,
+      'circle-stroke-color': '#ffffff',
+      'circle-stroke-width': 1.5,
+    },
+  });
+}
+
+function bindCrackInteractions(map: MLMap) {
+  const popup = new maplibregl.Popup({
+    closeButton: true, closeOnClick: true, maxWidth: '320px',
+    className: 'crack-popup',
+  });
+  const open = (e: maplibregl.MapLayerMouseEvent) => {
+    const f = e.features?.[0];
+    if (!f || f.geometry.type !== 'Point') return;
+    const p = f.properties as Record<string, string | number>;
+    const conf = Math.round(Number(p.confidence) * 100);
+    const vel = Number(p.subsidenceVelocityMmYr);
+    const html = `
+      <img class="crack-popup-img" src="${p.heatmap}" alt="drone crack heatmap" />
+      <div class="crack-popup-body">
+        <div class="crack-popup-title">Road crack
+          <span class="crack-sev crack-sev-${p.severity}">${p.severity}</span>
+        </div>
+        <div class="crack-popup-row">${p.crackType} &middot; ~${p.widthMm} mm wide &middot; ~${p.lengthM} m long</div>
+        <div class="crack-popup-row">Model confidence ${conf}% &middot; ${p.district}</div>
+        <div class="crack-popup-why">Flagged by InSAR subsidence gradient
+          ${p.subsidenceGradientScore}/100 (${vel > 0 ? '+' : ''}${vel} mm/yr);
+          confirmed by drone imagery.</div>
+        <div class="crack-popup-date">detected ${p.detectedAt}</div>
+      </div>`;
+    popup.setLngLat((f.geometry as GeoJSON.Point).coordinates as [number, number])
+      .setHTML(html).addTo(map);
+  };
+  for (const id of ['road-cracks-dot', 'road-cracks-ring']) {
+    map.on('click', id, open);
+    map.on('mouseenter', id, () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', id, () => { map.getCanvas().style.cursor = ''; });
+  }
 }
 
 function setupLayers(map: MLMap) {

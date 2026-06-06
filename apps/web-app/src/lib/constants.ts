@@ -16,9 +16,9 @@ export const RISK_BANDS: { band: RiskBand; min: number; max: number; color: stri
 ];
 
 export function bandForScore(score: number): RiskBand {
-  for (const b of RISK_BANDS) {
-    if (score >= b.min && score <= b.max) return b.band;
-  }
+  if (score >= 90) return 'Critical';
+  if (score >= 70) return 'High';
+  if (score >= 40) return 'Moderate';
   return 'Low';
 }
 
