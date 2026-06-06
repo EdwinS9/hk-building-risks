@@ -58,6 +58,8 @@ This applies the migrations in `supabase/migrations/`:
   managed by the upstream scoring pipeline / admin import.
 - `20260606120300_remove_schedule.sql` — removes the scheduling table and
   derives status from inspection history only.
+- `20260606120400_import_scores.sql` — adds a narrow authenticated score
+  import function used by the Account page CSV import.
 
 ### 3. (Optional) Seed with mock data
 
@@ -108,6 +110,9 @@ All reads and mutations go through `src/data/blocks.ts`. That module:
 
 - Reads from the `blocks_with_status` view to derive status / last_inspected.
 - Joins `scores` to populate the per-factor breakdown in the detail panel.
+- Imports score CSV rows into `scores` from the Account page after previewing
+  object ID vs. building record number matches and normalizing the selected
+  score scale.
 - Imports inspection rows into the `inspections` table. `created_by` is
   stamped server-side by a `BEFORE INSERT` trigger to `auth.uid()` — the client
   cannot impersonate another user.
@@ -121,6 +126,8 @@ All reads and mutations go through `src/data/blocks.ts`. That module:
 - Authenticated role: SELECT on blocks, scores, and inspections, INSERT on
   inspections, and column-scoped UPDATE on `blocks.note` only. Any attempt to
   update a different column on `blocks` is rejected by a row-level trigger.
+- Score writes go through a dedicated authenticated database function rather
+  than broad table write grants.
 - `created_by` on inspections is overridden server-side, so a malicious client
   can't attribute events to other users.
 - The frontend never sees a service-role key; only the anon key is used.

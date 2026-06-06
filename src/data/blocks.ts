@@ -16,6 +16,36 @@ export interface RiskFactor {
   contribution: number;
 }
 
+export interface ScoreImportRow {
+  objectId: string;
+  scoreName: string;
+  scoreValue: number;
+}
+
+export type ScoreMatchMode = 'object_id' | 'building_record_number';
+export type ScoreValueScale = 'zero_to_one' | 'zero_to_hundred';
+
+export interface ScoreMatchPreview {
+  objectId: {
+    matchedRows: number;
+    matchedBlocks: number;
+  };
+  buildingRecordNumber: {
+    matchedRows: number;
+    matchedBlocks: number;
+  };
+}
+
+export interface ScoreImportResult {
+  totalRows: number;
+  upserted: number;
+  matchedRows: number;
+  matchedBlocks: number;
+  unmatched: number;
+  invalidValues: number;
+  unmatchedSamples: string[];
+}
+
 export interface Block {
   id: string;
   name: string;
@@ -104,6 +134,12 @@ interface ScoreRow {
   block_id: string;
   score_name: string;
   score_value: number | string;
+}
+
+interface ScoreImportBlockRow {
+  id: string;
+  object_id: string;
+  building_record_number: string | null;
 }
 
 function toNumber(v: number | string): number {
@@ -293,6 +329,166 @@ async function fetchAllScores(): Promise<Map<string, RiskFactor[]>> {
     start += PAGE_SIZE;
   }
   return factorsByBlock;
+}
+
+async function fetchScoreImportBlocks(objectIds: string[]): Promise<ScoreImportBlockRow[]> {
+  const unique = [...new Set(objectIds.filter(Boolean))];
+  const out: ScoreImportBlockRow[] = [];
+  const CHUNK = 500;
+  for (let i = 0; i < unique.length; i += CHUNK) {
+    const chunk = unique.slice(i, i + CHUNK);
+    const [objectRes, recordRes] = await Promise.all([
+      supabase
+        .from('blocks')
+        .select('id, object_id, building_record_number')
+        .in('object_id', chunk),
+      supabase
+        .from('blocks')
+        .select('id, object_id, building_record_number')
+        .in('building_record_number', chunk),
+    ]);
+    if (objectRes.error) throw objectRes.error;
+    if (recordRes.error) throw recordRes.error;
+    out.push(...((objectRes.data ?? []) as ScoreImportBlockRow[]));
+    out.push(...((recordRes.data ?? []) as ScoreImportBlockRow[]));
+  }
+  return out;
+}
+
+function scoreMatchMaps(blocks: ScoreImportBlockRow[]) {
+  const byObjectId = new Map<string, string>();
+  const byRecordNumber = new Map<string, string>();
+  for (const b of blocks) {
+    byObjectId.set(b.object_id, b.id);
+    if (b.building_record_number) byRecordNumber.set(b.building_record_number, b.id);
+  }
+  return { byObjectId, byRecordNumber };
+}
+
+export async function previewScoreImport(rows: ScoreImportRow[]): Promise<ScoreMatchPreview> {
+  const blocks = await fetchScoreImportBlocks(rows.map(r => r.objectId));
+  const { byObjectId, byRecordNumber } = scoreMatchMaps(blocks);
+  const objectBlockIds = new Set<string>();
+  const recordBlockIds = new Set<string>();
+  let objectRows = 0;
+  let recordRows = 0;
+
+  for (const row of rows) {
+    const objectBlockId = byObjectId.get(row.objectId);
+    if (objectBlockId) {
+      objectRows++;
+      objectBlockIds.add(objectBlockId);
+    }
+
+    const recordBlockId = byRecordNumber.get(row.objectId);
+    if (recordBlockId) {
+      recordRows++;
+      recordBlockIds.add(recordBlockId);
+    }
+  }
+
+  return {
+    objectId: { matchedRows: objectRows, matchedBlocks: objectBlockIds.size },
+    buildingRecordNumber: { matchedRows: recordRows, matchedBlocks: recordBlockIds.size },
+  };
+}
+
+async function refreshScoreFactors(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const unique = [...new Set(ids)];
+  const factorsByBlock = new Map<string, RiskFactor[]>();
+  const CHUNK = 300;
+  for (let i = 0; i < unique.length; i += CHUNK) {
+    const chunk = unique.slice(i, i + CHUNK);
+    const { data, error } = await supabase
+      .from('scores')
+      .select('block_id, score_name, score_value')
+      .in('block_id', chunk);
+    if (error) throw error;
+    for (const s of (data ?? []) as ScoreRow[]) {
+      const arr = factorsByBlock.get(s.block_id) ?? [];
+      arr.push({ label: s.score_name, contribution: toNumber(s.score_value) });
+      factorsByBlock.set(s.block_id, arr);
+    }
+  }
+
+  for (let i = 0; i < _blocks.length; i++) {
+    const factors = factorsByBlock.get(_blocks[i].id);
+    if (factors) _blocks[i] = { ..._blocks[i], factors };
+  }
+  for (const b of _blocks) _byId.set(b.id, b);
+  emit();
+}
+
+function normalizeScoreValue(value: number, scale: ScoreValueScale): number | null {
+  if (scale === 'zero_to_hundred') {
+    if (value < 0 || value > 100) return null;
+    return Math.round((value / 100) * 10000) / 10000;
+  }
+  if (value < 0 || value > 1) return null;
+  return Math.round(value * 10000) / 10000;
+}
+
+export async function importScores(
+  rows: ScoreImportRow[],
+  mode: ScoreMatchMode,
+  scale: ScoreValueScale,
+  onProgress?: (done: number, total: number) => void,
+): Promise<ScoreImportResult> {
+  const blocks = await fetchScoreImportBlocks(rows.map(r => r.objectId));
+  const { byObjectId, byRecordNumber } = scoreMatchMaps(blocks);
+  const idMap = mode === 'object_id' ? byObjectId : byRecordNumber;
+
+  const unmatched = new Set<string>();
+  const affected = new Set<string>();
+  const upsertByKey = new Map<string, { block_id: string; score_name: string; score_value: number }>();
+  let matchedRows = 0;
+  let invalidValues = 0;
+
+  for (const row of rows) {
+    const blockId = idMap.get(row.objectId);
+    if (!blockId) {
+      unmatched.add(row.objectId);
+      continue;
+    }
+    matchedRows++;
+
+    const scoreValue = normalizeScoreValue(row.scoreValue, scale);
+    if (scoreValue == null) {
+      invalidValues++;
+      continue;
+    }
+
+    affected.add(blockId);
+    upsertByKey.set(`${blockId}\u0000${row.scoreName}`, {
+      block_id: blockId,
+      score_name: row.scoreName,
+      score_value: scoreValue,
+    });
+  }
+
+  const items = [...upsertByKey.values()];
+  const CHUNK = 500;
+  let upserted = 0;
+  for (let i = 0; i < items.length; i += CHUNK) {
+    const chunk = items.slice(i, i + CHUNK);
+    const { data, error } = await supabase.rpc('import_score_rows', { p_rows: chunk });
+    if (error) throw error;
+    upserted += typeof data === 'number' ? data : Number(data ?? chunk.length);
+    onProgress?.(upserted, items.length);
+  }
+
+  await refreshScoreFactors([...affected]);
+
+  return {
+    totalRows: rows.length,
+    upserted,
+    matchedRows,
+    matchedBlocks: affected.size,
+    unmatched: rows.length - matchedRows,
+    invalidValues,
+    unmatchedSamples: [...unmatched].slice(0, 8),
+  };
 }
 
 export function resetBlocksCache(): void {

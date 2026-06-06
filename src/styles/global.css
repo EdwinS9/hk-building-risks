@@ -1177,6 +1177,7 @@ input {
   opacity: 0.4;
   cursor: not-allowed;
 }
+.action-btn .spin { animation: spin 900ms linear infinite; }
 
 /* ===== Shared block notes ===== */
 .notes-section { padding-top: 14px; border-top: 1px solid var(--border-faint); }
@@ -2256,6 +2257,92 @@ input {
   font-size: 11px;
   border-radius: 4px;
 }
+.account-import-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.account-import-head > div { min-width: 0; }
+.score-import-panel {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.score-import-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px 24px;
+}
+.score-import-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.account-import-label {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.score-import-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.score-import-option {
+  text-align: left;
+  padding: 12px;
+  border: 1px solid var(--border-faint);
+  border-radius: 4px;
+  background: var(--inset-bg-soft);
+  color: var(--text-1);
+  transition: background 120ms, border-color 120ms;
+}
+.score-import-option:hover {
+  border-color: var(--border-strong);
+  background: rgba(110, 193, 255, 0.05);
+}
+.score-import-option.active {
+  border-color: var(--accent-dim);
+  background: rgba(110, 193, 255, 0.1);
+}
+.score-import-option-title {
+  display: block;
+  color: var(--text-0);
+  font-size: 12px;
+  font-weight: 600;
+}
+.score-import-option-primary {
+  display: block;
+  margin-top: 7px;
+  color: var(--accent);
+  font-size: 12px;
+}
+.score-import-option-secondary {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-2);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.score-import-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.score-import-errors {
+  padding: 10px 12px;
+  border: 1px solid rgba(245, 182, 66, 0.36);
+  background: rgba(245, 182, 66, 0.08);
+  color: var(--moderate);
+  font-size: 11px;
+  line-height: 1.5;
+  border-radius: 4px;
+}
 @media (max-width: 700px) {
   .account-grid { grid-template-columns: 1fr; }
+  .account-import-head { flex-direction: column; }
+  .score-import-summary,
+  .score-import-options { grid-template-columns: 1fr; }
 }

@@ -1,7 +1,15 @@
-import type { InspectionImportRow } from '../data/blocks';
+import type { InspectionImportRow, ScoreImportRow } from '../data/blocks';
 
 export interface ParsedInspectionsCsv {
   rows: InspectionImportRow[];
+  /** Human-readable problems found while parsing (capped). */
+  errors: string[];
+  /** Count of data lines that were skipped because they were invalid. */
+  skipped: number;
+}
+
+export interface ParsedScoresCsv {
+  rows: ScoreImportRow[];
   /** Human-readable problems found while parsing (capped). */
   errors: string[];
   /** Count of data lines that were skipped because they were invalid. */
@@ -80,6 +88,55 @@ export function parseInspectionsCsv(text: string): ParsedInspectionsCsv {
       continue;
     }
     rows.push({ objectId, date });
+  }
+
+  return { rows, errors, skipped };
+}
+
+// Parse a CSV with header columns `object_id`, `score_name`, and `score_value`.
+// `score_value` is kept as the source number; the caller decides whether it is
+// a 0..1 value or a 0..100 value before import.
+export function parseScoresCsv(text: string): ParsedScoresCsv {
+  const errors: string[] = [];
+  const clean = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+  const lines = clean.split('\n').filter(l => l.trim() !== '');
+
+  if (lines.length === 0) {
+    return { rows: [], errors: ['File is empty.'], skipped: 0 };
+  }
+
+  const header = splitCsvLine(lines[0]).map(h => h.trim().toLowerCase());
+  const objIdx = header.indexOf('object_id');
+  const nameIdx = header.indexOf('score_name');
+  const valueIdx = header.indexOf('score_value');
+  if (objIdx === -1 || nameIdx === -1 || valueIdx === -1) {
+    return {
+      rows: [],
+      errors: [`Header must contain "object_id", "score_name", and "score_value" columns. Found: ${header.join(', ') || '(none)'}.`],
+      skipped: 0,
+    };
+  }
+
+  const rows: ScoreImportRow[] = [];
+  let skipped = 0;
+  for (let i = 1; i < lines.length; i++) {
+    const cells = splitCsvLine(lines[i]);
+    const objectId = (cells[objIdx] ?? '').trim();
+    const scoreName = (cells[nameIdx] ?? '').trim();
+    const raw = (cells[valueIdx] ?? '').trim();
+    const scoreValue = Number(raw);
+
+    if (!objectId || !scoreName || !raw) {
+      skipped++;
+      if (errors.length < 8) errors.push(`Line ${i + 1}: missing object_id, score_name, or score_value.`);
+      continue;
+    }
+    if (!Number.isFinite(scoreValue)) {
+      skipped++;
+      if (errors.length < 8) errors.push(`Line ${i + 1}: invalid score_value "${raw}".`);
+      continue;
+    }
+    rows.push({ objectId, scoreName, scoreValue });
   }
 
   return { rows, errors, skipped };
