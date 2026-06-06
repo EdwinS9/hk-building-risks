@@ -2346,3 +2346,66 @@ input {
   .score-import-summary,
   .score-import-options { grid-template-columns: 1fr; }
 }
+
+/* ===== Road-crack detection popup (MapView road-cracks layer) ===== */
+.crack-popup .maplibregl-popup-content {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #0b0f17;
+  color: #e7edf5;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.crack-popup .maplibregl-popup-close-button {
+  color: #cdd6e2;
+  font-size: 18px;
+  padding: 2px 7px;
+}
+.crack-popup-img {
+  display: block;
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  background: #05080f;
+}
+.crack-popup-body { padding: 9px 11px 11px; }
+.crack-popup-title {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.crack-sev {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 999px;
+  color: #0b0f17;
+}
+.crack-sev-Severe { background: #d11149; color: #fff; }
+.crack-sev-High { background: #f3722c; }
+.crack-sev-Moderate { background: #f9c74f; }
+.crack-sev-Low { background: #90be6d; }
+.crack-popup-row {
+  font-size: 11.5px;
+  color: #b7c2d0;
+  line-height: 1.45;
+}
+.crack-popup-why {
+  font-size: 11px;
+  color: #8fa6c4;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  line-height: 1.45;
+}
+.crack-popup-date {
+  font-size: 10px;
+  color: #6b7890;
+  margin-top: 5px;
+}
