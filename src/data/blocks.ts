@@ -167,9 +167,9 @@ function rowToBlock(row: BlockRow, factors?: RiskFactor[]): Block {
   };
 }
 
-// Page size for the paginated fetch. Must be <= server `max_rows`.
-// Larger pages = fewer round trips but each parse is heavier; this is a
-// good balance for 60k-row datasets over a typical broadband link.
+// Requested page size for paginated fetches. PostgREST may clamp responses to
+// the server max_rows setting, so full-table readers must advance by the number
+// of rows actually returned, not by this requested size.
 const PAGE_SIZE = 5000;
 
 const BLOCK_COLUMNS =
@@ -315,11 +315,15 @@ function ingestRows(rows: BlockRow[]) {
 async function fetchAllScores(): Promise<Map<string, RiskFactor[]>> {
   const factorsByBlock = new Map<string, RiskFactor[]>();
   let start = 0;
-  // Loop until a partial page is returned (= end of data).
+  // Loop until the server returns no rows. Supabase/PostgREST may clamp a
+  // larger requested range to max_rows (often 1000), so a "partial" response
+  // does not necessarily mean the table is drained.
   while (true) {
     const { data, error } = await supabase
       .from('scores')
       .select('block_id, score_name, score_value')
+      .order('block_id', { ascending: true })
+      .order('score_name', { ascending: true })
       .range(start, start + PAGE_SIZE - 1);
     if (error) throw error;
     const batch = (data ?? []) as ScoreRow[];
@@ -328,8 +332,8 @@ async function fetchAllScores(): Promise<Map<string, RiskFactor[]>> {
       arr.push({ label: s.score_name, contribution: toNumber(s.score_value) });
       factorsByBlock.set(s.block_id, arr);
     }
-    if (batch.length < PAGE_SIZE) break;
-    start += PAGE_SIZE;
+    if (batch.length === 0) break;
+    start += batch.length;
   }
   return factorsByBlock;
 }
@@ -596,6 +600,7 @@ interface InspectionImportBlockRow {
 async function fetchAllInspectionImportBlocks(): Promise<InspectionImportBlockRow[]> {
   const out: InspectionImportBlockRow[] = [];
   let start = 0;
+  // Same max_rows caveat as fetchAllScores: advance by what came back.
   while (true) {
     const { data, error } = await supabase
       .from('blocks')
@@ -604,9 +609,9 @@ async function fetchAllInspectionImportBlocks(): Promise<InspectionImportBlockRo
       .range(start, start + PAGE_SIZE - 1);
     if (error) throw error;
     const batch = (data ?? []) as InspectionImportBlockRow[];
+    if (batch.length === 0) break;
     out.push(...batch);
-    if (batch.length < PAGE_SIZE) break;
-    start += PAGE_SIZE;
+    start += batch.length;
   }
   return out;
 }
