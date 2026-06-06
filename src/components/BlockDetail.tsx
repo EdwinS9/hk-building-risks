@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, CalendarCheck, CheckCircle2, Clock4, Info, StickyNote, Save, Loader2 } from 'lucide-react';
+import { X, CalendarCheck, CheckCircle2, Clock4, StickyNote, Save, Loader2 } from 'lucide-react';
 import type { Block } from '../data/blocks';
 import { colorForBand, relativeTime } from '../lib/constants';
 import { updateBlockStatus, setBlockNote } from '../data/blocks';
@@ -123,13 +123,6 @@ export default function BlockDetail({ block, onClose }: Props) {
           </button>
         </div>
 
-        <div className="disclaimer">
-          <Info size={11} />
-          <span>
-            The risk score is an indicator to prioritize inspection, not a determination of safety.
-            A human inspector must verify on site.
-          </span>
-        </div>
       </div>
     </aside>
   );

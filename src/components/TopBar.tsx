@@ -1,20 +1,16 @@
 import { AlertTriangle, ShieldAlert, ClipboardList, Menu } from 'lucide-react';
 import type { Block } from '../data/blocks';
-import { VIEWS, type ViewKey } from '../lib/views';
 
 interface Props {
   blocks: Block[];
-  view: ViewKey;
   navOpen: boolean;
   onMenuToggle: () => void;
 }
 
-export default function TopBar({ blocks, view, navOpen, onMenuToggle }: Props) {
+export default function TopBar({ blocks, navOpen, onMenuToggle }: Props) {
   const total = blocks.length;
   const critical = blocks.filter(b => b.riskBand === 'Critical').length;
   const high = blocks.filter(b => b.riskBand === 'High').length;
-
-  const current = VIEWS.find(v => v.key === view) ?? VIEWS[0];
 
   return (
     <header className="topbar glass">
@@ -31,11 +27,6 @@ export default function TopBar({ blocks, view, navOpen, onMenuToggle }: Props) {
 
         <div className="brand-text">
           <div className="brand-title">Hong Kong Building Risk Monitor</div>
-        </div>
-
-        <div className="view-chip">
-          <current.icon size={11} />
-          <span>{current.label.toUpperCase()}</span>
         </div>
       </div>
 

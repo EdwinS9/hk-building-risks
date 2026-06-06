@@ -20,6 +20,13 @@ interface Props {
 
 type SortKey = 'score' | 'name' | 'district';
 
+// `lastInspected` is a plain YYYY-MM-DD date. Render it compactly, e.g. "12 Mar 2026".
+function formatInspectedDate(date: string): string {
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return date;
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 export default function TriageQueue({
   blocks, totalCount, selectedId, onSelect, onHover, open, onToggle,
   bandFilter, statusFilter, onToggleBand, onToggleStatus,
@@ -163,10 +170,14 @@ export default function TriageQueue({
                           <div className="row-name">{b.name}</div>
                           <div className="row-meta">
                             <span>{b.district}</span>
-                            <span className="dot-sep" />
-                            <span className={`row-status status-${b.status.replace(' ', '-').toLowerCase()}`}>
-                              {b.status}
-                            </span>
+                            {b.lastInspected && (
+                              <>
+                                <span className="dot-sep" />
+                                <span className="row-inspected">
+                                  Inspected {formatInspectedDate(b.lastInspected)}
+                                </span>
+                              </>
+                            )}
                           </div>
                         </div>
                         <div className="row-score mono" style={{ color }}>{b.riskScore}</div>

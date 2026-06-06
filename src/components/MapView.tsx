@@ -88,6 +88,7 @@ export default function MapView(props: Props) {
       pushData(map, blocks);
       applyFeatureStateDelta(map, prevSelectedRef, selectedId, 'selected');
       applyFeatureStateDelta(map, prevHoveredRef, hoveredId, 'hovered');
+      pushSelected(map, selectedId ? blocks.find(b => b.id === selectedId) : null);
       bindInteractions(map);
       startPulse();
     });
@@ -163,20 +164,18 @@ export default function MapView(props: Props) {
         const t = (Math.sin(pulsePhaseRef.current) + 1) / 2;
 
         // ── Selected-block highlight: a breathing accent ring around the dot.
-        // Runs at any zoom while a block is selected (detail panel open).
-        if (selectedIdRef.current && m.getLayer('blocks-selected-ring')) {
-          const sel: maplibregl.ExpressionSpecification = ['boolean', ['feature-state', 'selected'], false];
+        // Runs at any zoom while a block is selected (detail panel open). The
+        // overlay source holds only the selected point, so we animate the whole
+        // layer directly — no per-feature gating needed.
+        if (selectedIdRef.current && m.getLayer('selected-ring')) {
           const amp = 4 + t * 5; // ring grows/shrinks
-          // Top-level zoom interpolate; branch on selection inside each stop.
-          m.setPaintProperty('blocks-selected-ring', 'circle-radius', [
+          m.setPaintProperty('selected-ring', 'circle-radius', [
             'interpolate', ['linear'], ['zoom'],
-            10, ['case', sel, 7 + amp, 0],
-            14, ['case', sel, 11 + amp, 0],
-            18, ['case', sel, 16 + amp, 0],
+            10, 7 + amp,
+            14, 11 + amp,
+            18, 16 + amp,
           ]);
-          m.setPaintProperty('blocks-selected-ring', 'circle-stroke-opacity', [
-            'case', sel, 0.4 + t * 0.5, 0,
-          ]);
+          m.setPaintProperty('selected-ring', 'circle-stroke-opacity', 0.4 + t * 0.5);
         }
 
         // ── Risk glow: only animate when it's actually on screen (zoomed out).
@@ -231,6 +230,7 @@ export default function MapView(props: Props) {
     prevHoveredRef.current = null;
     applyFeatureStateDelta(m, prevSelectedRef, selectedId, 'selected');
     applyFeatureStateDelta(m, prevHoveredRef, hoveredId, 'hovered');
+    pushSelected(m, selectedId ? blocks.find(b => b.id === selectedId) : null);
   }, [blocks]);
 
   // Delta state updates — O(1) per change instead of O(n).
@@ -238,6 +238,8 @@ export default function MapView(props: Props) {
     const m = mapRef.current;
     if (!m || !loadedRef.current) return;
     applyFeatureStateDelta(m, prevSelectedRef, selectedId, 'selected');
+    pushSelected(m, selectedId ? blocks.find(b => b.id === selectedId) : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
   useEffect(() => {
@@ -261,6 +263,7 @@ export default function MapView(props: Props) {
       prevHoveredRef.current = null;
       applyFeatureStateDelta(m, prevSelectedRef, selectedId, 'selected');
       applyFeatureStateDelta(m, prevHoveredRef, hoveredId, 'hovered');
+      pushSelected(m, selectedId ? blocks.find(b => b.id === selectedId) : null);
     };
     m.once('style.load', onStyle);
     return () => { m.off('style.load', onStyle); };
@@ -388,36 +391,10 @@ function setupLayers(map: MLMap) {
     },
   });
 
-  // ---------- Selected-block highlight ring ----------
-  // A hollow accent ring sitting *under* the dot. It's invisible unless the
-  // feature is selected (feature-state driven), and the pulse loop animates it
-  // into a soft "breathing" halo so the chosen block is unmistakable while the
-  // detail panel is open. Feature-state can't be used in layer filters, so we
-  // render it for every point and gate visibility purely through paint.
-  const ringSel: maplibregl.ExpressionSpecification = ['boolean', ['feature-state', 'selected'], false];
-  map.addLayer({
-    id: 'blocks-selected-ring',
-    type: 'circle',
-    source: 'blocks',
-    filter: ['!', ['has', 'point_count']],
-    paint: {
-      'circle-color': 'rgba(0,0,0,0)', // ring only — no fill
-      // Top-level zoom interpolate (required); branch on selection per-stop so
-      // the ring collapses to radius 0 when the point isn't selected.
-      'circle-radius': [
-        'interpolate', ['linear'], ['zoom'],
-        10, ['case', ringSel, 9, 0],
-        14, ['case', ringSel, 13, 0],
-        18, ['case', ringSel, 19, 0],
-      ],
-      'circle-stroke-color': '#6EC1FF',
-      'circle-stroke-width': ['case', ringSel, 2.5, 0],
-      'circle-stroke-opacity': ['case', ringSel, 0.85, 0],
-    },
-  });
-
   // Main marker — compact dots for usability. Selected feature gets a small
-  // bump (and the ring above) so it stays prominent without crowding.
+  // bump so it stays prominent without crowding. (The selected point is ALSO
+  // re-drawn on top via the dedicated overlay layers below so it can never be
+  // occluded by neighboring dots in this same layer.)
   map.addLayer({
     id: 'blocks-circle',
     type: 'circle',
@@ -452,6 +429,51 @@ function setupLayers(map: MLMap) {
       'circle-opacity': 1,
     },
   });
+
+  // ---------- Selected-block overlay (always on top) ----------
+  // A separate, un-clustered source holding ONLY the selected block. Because
+  // these layers are added last, the chosen point is painted above every other
+  // dot in `blocks-circle` — so it can never be hidden behind a neighbor. The
+  // ring "breathes" via the pulse loop; the dot mirrors the main marker.
+  map.addSource('selected-block', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] },
+  });
+
+  // Breathing accent ring (animated by the pulse loop).
+  map.addLayer({
+    id: 'selected-ring',
+    type: 'circle',
+    source: 'selected-block',
+    paint: {
+      'circle-color': 'rgba(0,0,0,0)', // ring only — no fill
+      'circle-radius': [
+        'interpolate', ['linear'], ['zoom'],
+        10, 9, 14, 13, 18, 19,
+      ],
+      'circle-stroke-color': '#6EC1FF',
+      'circle-stroke-width': 2.5,
+      'circle-stroke-opacity': 0.85,
+    },
+  });
+
+  // The selected dot itself, re-drawn on top of the main marker layer.
+  map.addLayer({
+    id: 'selected-dot',
+    type: 'circle',
+    source: 'selected-block',
+    paint: {
+      'circle-color': bandColorExpr,
+      'circle-radius': [
+        'interpolate', ['linear'], ['zoom'],
+        10, 4, 13, 5, 16, 7.5, 20, 11,
+      ],
+      'circle-stroke-color': '#6EC1FF',
+      'circle-stroke-width': 2.5,
+      'circle-stroke-opacity': 1,
+      'circle-opacity': 1,
+    },
+  });
 }
 
 function pushData(map: MLMap, blocks: Block[]) {
@@ -475,6 +497,21 @@ function pushData(map: MLMap, blocks: Block[]) {
       },
     };
   }
+  src.setData({ type: 'FeatureCollection', features });
+}
+
+// Feed the dedicated overlay source with just the selected block (or clear it).
+function pushSelected(map: MLMap, block: Block | null | undefined) {
+  const src = map.getSource('selected-block') as maplibregl.GeoJSONSource | undefined;
+  if (!src) return;
+  const features: GeoJSON.Feature[] = block
+    ? [{
+        type: 'Feature',
+        id: block.id,
+        geometry: { type: 'Point', coordinates: [block.coordinate.lng, block.coordinate.lat] },
+        properties: { id: block.id, score: block.riskScore, band: block.riskBand, name: block.name },
+      }]
+    : [];
   src.setData({ type: 'FeatureCollection', features });
 }
 

@@ -912,6 +912,7 @@ input {
 }
 
 .row-status { letter-spacing: 0.1em; }
+.row-inspected { color: var(--inspected); letter-spacing: 0.04em; white-space: nowrap; }
 .status-not-scheduled { color: var(--not-scheduled); }
 .status-scheduled { color: var(--scheduled); }
 .status-inspected { color: var(--inspected); }
