@@ -1019,6 +1019,12 @@ input {
   margin-bottom: 8px;
 }
 
+.factor-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  margin: -2px 0 10px;
+}
 .factors { display: flex; flex-direction: column; gap: 8px; }
 .factor-row {
   display: flex;
@@ -1026,6 +1032,35 @@ input {
   font-size: 11px;
   color: var(--text-1);
 }
+
+/* Clickable factor (toggles a single-score heatmap on the map). */
+.factor-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms;
+}
+.factor-btn:hover {
+  background: rgba(110, 193, 255, 0.05);
+  border-color: var(--border-faint);
+}
+.factor-btn.active {
+  background: rgba(110, 193, 255, 0.09);
+  border-color: var(--accent-dim);
+}
+.factor-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.factor-flame { color: var(--accent); }
+.factor-btn.active .factor-pct { color: var(--accent); }
 .factor-detail {
   margin-left: 8px;
   font-size: 10px;
@@ -1196,6 +1231,72 @@ input {
   transition: left 380ms cubic-bezier(.34, 1.2, .64, 1);
 }
 .legend.shifted { left: 12px; }
+
+/* ===== Heatmap control bar ===== */
+.heatmap-bar {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 10px 8px 14px;
+  border-radius: 6px;
+  animation: heatmap-in 220ms cubic-bezier(.34, 1.4, .64, 1);
+}
+@keyframes heatmap-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.heatmap-bar-icon { color: var(--accent); flex-shrink: 0; }
+.heatmap-bar-text { display: flex; flex-direction: column; line-height: 1.25; }
+.heatmap-bar-label {
+  font-size: 8px;
+  letter-spacing: 0.24em;
+  color: var(--text-dim);
+}
+.heatmap-bar-factor {
+  font-size: 12px;
+  color: var(--text-0);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.heatmap-scale {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.heatmap-scale-cap {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+.heatmap-scale-grad {
+  width: 90px;
+  height: 7px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #2b7bba 0%, #3FB6B0 35%, #F5B642 60%, #F37735 80%, #E84545 100%);
+}
+.heatmap-bar-close {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-1);
+  transition: all 120ms;
+}
+.heatmap-bar-close:hover {
+  color: var(--text-0);
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.04);
+}
 .legend-title {
   font-size: 9px;
   letter-spacing: 0.24em;
@@ -1516,6 +1617,52 @@ input {
   padding: 5px 9px;
   letter-spacing: 0.08em;
 }
+.action-btn.tiny .spin { animation: spin 900ms linear infinite; }
+
+/* Import button sits at the far right of the page title row. */
+.page-import-btn { margin-left: auto; }
+
+/* CSV import status banner under the page header. */
+.import-banner {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--border);
+  background: var(--inset-bg-soft);
+  color: var(--text-1);
+}
+.import-banner svg { flex-shrink: 0; }
+.import-banner .spin { animation: spin 900ms linear infinite; }
+.import-banner-text { flex: 1; min-width: 0; }
+.import-working { border-color: var(--accent-dim); color: var(--text-0); }
+.import-working svg { color: var(--accent); }
+.import-done {
+  border-color: rgba(63, 182, 176, 0.4);
+  background: rgba(63, 182, 176, 0.08);
+  color: var(--low);
+}
+.import-error {
+  border-color: rgba(232, 69, 69, 0.4);
+  background: rgba(232, 69, 69, 0.08);
+  color: var(--critical);
+}
+.import-banner-dismiss {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: inherit;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 4px 9px;
+  border-radius: 3px;
+  transition: background 120ms;
+}
+.import-banner-dismiss:hover { background: rgba(255, 255, 255, 0.06); }
 
 /* ===== Settings page ===== */
 .settings-body {

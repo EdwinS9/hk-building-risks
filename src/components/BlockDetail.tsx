@@ -1,28 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Clock4, StickyNote, Save, Loader2 } from 'lucide-react';
+import { X, Clock4, StickyNote, Save, Loader2, Flame } from 'lucide-react';
 import type { Block } from '../data/blocks';
-import { colorForBand, relativeTime } from '../lib/constants';
+import { colorForBand, relativeTime, inspectionAgeScore, LAST_INSPECTED_FACTOR } from '../lib/constants';
 import { setBlockNote } from '../data/blocks';
 
 interface Props {
   block: Block | null;
   onClose: () => void;
-}
-
-const MS_PER_YEAR = 365.25 * 24 * 3600 * 1000;
-
-// Score the inspection age as a risk factor (0–100):
-//   • 0 points until the inspection is 1 year in the past
-//   • linear climb from there, reaching 100 at 30 years
-//   • never inspected ⇒ treated as fully overdue (100)
-function inspectionAgeScore(lastInspected: string | null): number {
-  if (!lastInspected) return 100;
-  const then = new Date(lastInspected).getTime();
-  if (Number.isNaN(then)) return 0;
-  const years = (Date.now() - then) / MS_PER_YEAR;
-  if (years <= 1) return 0;
-  if (years >= 30) return 100;
-  return Math.round(((years - 1) / (30 - 1)) * 100);
+  heatmapFactor: string | null;
+  onToggleHeatmap: (label: string) => void;
 }
 
 // `lastInspected` is a plain YYYY-MM-DD date. Render it compactly, e.g. "12 Mar 2026".
@@ -32,7 +18,7 @@ function formatInspectedDate(date: string): string {
   return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export default function BlockDetail({ block, onClose }: Props) {
+export default function BlockDetail({ block, onClose, heatmapFactor, onToggleHeatmap }: Props) {
   // Keep last block while animating out so content doesn't blank during exit.
   const lastBlockRef = useRef<Block | null>(null);
   const [displayBlock, setDisplayBlock] = useState<Block | null>(null);
@@ -90,52 +76,73 @@ export default function BlockDetail({ block, onClose }: Props) {
 
         <div className="section">
           <div className="section-label">RISK BREAKDOWN</div>
+          <div className="factor-hint">Tap a score to heat-map it across the map.</div>
           <div className="factors">
             {b.factors && b.factors.length > 0 &&
               [...b.factors].sort((x, y) => y.contribution - x.contribution).map(f => (
-                <div className="factor" key={f.label}>
-                  <div className="factor-row">
-                    <span className="factor-label">{f.label}</span>
-                    <span className="factor-pct mono">{Math.round(f.contribution * 100)}%</span>
-                  </div>
-                  <div className="factor-bar">
-                    <div
-                      className="factor-bar-fill"
-                      style={{ width: `${f.contribution * 100}%`, background: color }}
-                    />
-                  </div>
-                </div>
+                <FactorBar
+                  key={f.label}
+                  label={f.label}
+                  pct={Math.round(f.contribution * 100)}
+                  fillPct={f.contribution * 100}
+                  color={color}
+                  active={heatmapFactor === f.label}
+                  onClick={() => onToggleHeatmap(f.label)}
+                />
               ))}
 
             {/* Inspection age scored as its own risk factor. */}
-            {(() => {
-              const ageScore = inspectionAgeScore(b.lastInspected);
-              return (
-                <div className="factor" key="__last-inspected">
-                  <div className="factor-row">
-                    <span className="factor-label">
-                      Last inspected
-                      <span className="factor-detail">
-                        {b.lastInspected ? formatInspectedDate(b.lastInspected) : 'never'}
-                      </span>
-                    </span>
-                    <span className="factor-pct mono">{ageScore}%</span>
-                  </div>
-                  <div className="factor-bar">
-                    <div
-                      className="factor-bar-fill"
-                      style={{ width: `${ageScore}%`, background: color }}
-                    />
-                  </div>
-                </div>
-              );
-            })()}
+            <FactorBar
+              label="Last inspected"
+              detail={b.lastInspected ? formatInspectedDate(b.lastInspected) : 'never'}
+              pct={inspectionAgeScore(b.lastInspected)}
+              fillPct={inspectionAgeScore(b.lastInspected)}
+              color={color}
+              active={heatmapFactor === LAST_INSPECTED_FACTOR}
+              onClick={() => onToggleHeatmap(LAST_INSPECTED_FACTOR)}
+            />
           </div>
         </div>
 
         <NotesSection block={b} />
       </div>
     </aside>
+  );
+}
+
+function FactorBar({
+  label, detail, pct, fillPct, color, active, onClick,
+}: {
+  label: string;
+  detail?: string;
+  pct: number;
+  fillPct: number;
+  color: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={`factor factor-btn ${active ? 'active' : ''}`}
+      onClick={onClick}
+      title="Show this score as a heatmap on the map"
+      aria-pressed={active}
+    >
+      <div className="factor-row">
+        <span className="factor-label">
+          {label}
+          {detail && <span className="factor-detail">{detail}</span>}
+        </span>
+        <span className="factor-end">
+          {active && <Flame size={11} className="factor-flame" />}
+          <span className="factor-pct mono">{pct}%</span>
+        </span>
+      </div>
+      <div className="factor-bar">
+        <div className="factor-bar-fill" style={{ width: `${fillPct}%`, background: color }} />
+      </div>
+    </button>
   );
 }
 

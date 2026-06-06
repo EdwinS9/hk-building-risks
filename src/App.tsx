@@ -13,7 +13,8 @@ import LoginScreen from './components/auth/LoginScreen';
 import DataLoadingScreen from './components/DataLoadingScreen';
 import { getBlocks, subscribe, getBlockById, resetBlocksCache, getLoadProgress, BLOCK_STATUSES } from './data/blocks';
 import type { BlockStatus } from './data/blocks';
-import { BAND_ORDER } from './lib/constants';
+import { Flame, X } from 'lucide-react';
+import { BAND_ORDER, LAST_INSPECTED_FACTOR } from './lib/constants';
 import type { RiskBand } from './lib/constants';
 import { getAuth, subscribeAuth, initAuth, signOut } from './lib/auth';
 import { initDbStatus } from './lib/dbStatus';
@@ -45,6 +46,29 @@ export default function App() {
   return <Dashboard onSignOut={() => void signOut()} />;
 }
 
+// Floating control shown while a single-score heatmap is active on the map.
+// Explains the gradient and offers a one-click way back to the normal view.
+function HeatmapBar({ factor, onClear }: { factor: string; onClear: () => void }) {
+  const name = factor === LAST_INSPECTED_FACTOR ? 'Last inspected' : factor;
+  return (
+    <div className="heatmap-bar glass">
+      <Flame size={13} className="heatmap-bar-icon" />
+      <div className="heatmap-bar-text">
+        <span className="heatmap-bar-label">HEATMAP</span>
+        <span className="heatmap-bar-factor">{name}</span>
+      </div>
+      <div className="heatmap-scale" aria-hidden>
+        <span className="heatmap-scale-cap">low</span>
+        <span className="heatmap-scale-grad" />
+        <span className="heatmap-scale-cap">high</span>
+      </div>
+      <button className="heatmap-bar-close" onClick={onClear} title="Exit heatmap">
+        <X size={13} />
+      </button>
+    </div>
+  );
+}
+
 function BootSplash() {
   return (
     <div className="login-root" aria-busy="true">
@@ -71,6 +95,12 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
   const [view, setView] = useState<ViewKey>('risk-monitor');
   const [triageOpen, setTriageOpen] = useState(true);
   const [navOpen, setNavOpen] = useState(false);
+  // When set, the map recolors every dot by this breakdown factor (a temporary
+  // single-score heatmap). Toggled from the block detail breakdown rows.
+  const [heatmapFactor, setHeatmapFactor] = useState<string | null>(null);
+
+  const toggleHeatmap = (label: string) =>
+    setHeatmapFactor(cur => (cur === label ? null : label));
 
   // Band/status filters are lifted here so they drive BOTH the triage list
   // AND the map points. (Free-text search stays inside the list — filtering
@@ -121,6 +151,7 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
     setView(v);
     if (v !== 'risk-monitor') {
       setSelectedId(null);
+      setHeatmapFactor(null); // leaving the map clears any active heatmap
     }
   }
 
@@ -152,6 +183,7 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
             onSelect={handleSelect}
             onHover={setHoveredId}
             flyToken={flyToken}
+            heatmapFactor={heatmapFactor}
           />
           <TriageQueue
             blocks={filteredBlocks}
@@ -166,8 +198,19 @@ function Dashboard({ onSignOut }: { onSignOut: () => void }) {
             onToggleBand={toggleBand}
             onToggleStatus={toggleStatus}
           />
-          <BlockDetail block={selected} onClose={() => setSelectedId(null)} />
+          <BlockDetail
+            block={selected}
+            onClose={() => setSelectedId(null)}
+            heatmapFactor={heatmapFactor}
+            onToggleHeatmap={toggleHeatmap}
+          />
           <Legend triageOpen={triageOpen} />
+          {heatmapFactor && (
+            <HeatmapBar
+              factor={heatmapFactor}
+              onClear={() => setHeatmapFactor(null)}
+            />
+          )}
         </>
       )}
 

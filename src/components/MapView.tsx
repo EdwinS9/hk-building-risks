@@ -1,7 +1,10 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import maplibregl, { Map as MLMap, StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { HK_CENTER, HK_DEFAULT_ZOOM, HK_DEFAULT_PITCH, HK_DEFAULT_BEARING, RISK_BANDS } from '../lib/constants';
+import {
+  HK_CENTER, HK_DEFAULT_ZOOM, HK_DEFAULT_PITCH, HK_DEFAULT_BEARING,
+  RISK_BANDS, LAST_INSPECTED_FACTOR, inspectionAgeScore,
+} from '../lib/constants';
 import type { Block } from '../data/blocks';
 import MapControls from './MapControls';
 import { getResolvedTheme, subscribeTheme, type ResolvedTheme } from '../lib/theme';
@@ -13,6 +16,59 @@ interface Props {
   onSelect: (id: string | null) => void;
   onHover: (id: string | null) => void;
   flyToken: number;
+  /** When set, every dot is recolored by this breakdown factor (heatmap). */
+  heatmapFactor?: string | null;
+}
+
+// Normal dot color: by risk band.
+const BAND_COLOR_EXPR: maplibregl.ExpressionSpecification = [
+  'match', ['get', 'band'],
+  'Low',      RISK_BANDS[0].color,
+  'Moderate', RISK_BANDS[1].color,
+  'High',     RISK_BANDS[2].color,
+  'Critical', RISK_BANDS[3].color,
+  '#888',
+];
+
+// Heatmap dot color: a cool→hot gradient over the per-feature `hm` value
+// (0..1). Features missing the factor carry hm = -1 and read as muted gray.
+const HEAT_COLOR_EXPR: maplibregl.ExpressionSpecification = [
+  'case',
+  ['<', ['get', 'hm'], 0], '#4a5568',
+  [
+    'interpolate', ['linear'], ['get', 'hm'],
+    0,    '#2b7bba',
+    0.35, '#3FB6B0',
+    0.6,  '#F5B642',
+    0.8,  '#F37735',
+    1,    '#E84545',
+  ],
+];
+
+function dotColorExpr(heatmap: boolean): maplibregl.ExpressionSpecification {
+  return heatmap ? HEAT_COLOR_EXPR : BAND_COLOR_EXPR;
+}
+
+// Swap dot coloring (band ↔ heat) and hide the risk glow while heat-mapping so
+// the single-score gradient reads cleanly.
+function applyHeatmapStyle(map: MLMap, factor: string | null) {
+  if (!map.getLayer('blocks-circle')) return;
+  const on = !!factor;
+  map.setPaintProperty('blocks-circle', 'circle-color', dotColorExpr(on));
+  if (map.getLayer('selected-dot')) {
+    map.setPaintProperty('selected-dot', 'circle-color', dotColorExpr(on));
+  }
+  if (map.getLayer('blocks-glow')) {
+    map.setLayoutProperty('blocks-glow', 'visibility', on ? 'none' : 'visible');
+  }
+}
+
+// Per-block value (0..1) for the active heatmap factor, or -1 if unavailable.
+function heatValue(b: Block, factor: string | null): number {
+  if (!factor) return -1;
+  if (factor === LAST_INSPECTED_FACTOR) return inspectionAgeScore(b.lastInspected) / 100;
+  const f = b.factors?.find(x => x.label === factor);
+  return f ? f.contribution : -1;
 }
 
 function cartoStyle(variant: 'dark' | 'light'): StyleSpecification {
@@ -54,6 +110,9 @@ function getStyle(theme: ResolvedTheme): StyleSpecification | string {
 
 export default function MapView(props: Props) {
   const { blocks, selectedId, hoveredId, onSelect, onHover, flyToken } = props;
+  const heatmapFactor = props.heatmapFactor ?? null;
+  const heatmapFactorRef = useRef<string | null>(heatmapFactor);
+  heatmapFactorRef.current = heatmapFactor;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const loadedRef = useRef(false);
@@ -85,10 +144,11 @@ export default function MapView(props: Props) {
     map.on('load', () => {
       loadedRef.current = true;
       setupLayers(map);
-      pushData(map, blocks);
+      pushData(map, blocks, heatmapFactorRef.current);
       applyFeatureStateDelta(map, prevSelectedRef, selectedId, 'selected');
       applyFeatureStateDelta(map, prevHoveredRef, hoveredId, 'hovered');
-      pushSelected(map, selectedId ? blocks.find(b => b.id === selectedId) : null);
+      pushSelected(map, selectedId ? blocks.find(b => b.id === selectedId) : null, heatmapFactorRef.current);
+      applyHeatmapStyle(map, heatmapFactorRef.current);
       bindInteractions(map);
       startPulse();
     });
@@ -222,7 +282,7 @@ export default function MapView(props: Props) {
   useEffect(() => {
     const m = mapRef.current;
     if (!m || !loadedRef.current) return;
-    pushData(m, blocks);
+    pushData(m, blocks, heatmapFactorRef.current);
     // setData clears feature-state, so reset the delta refs and reapply the
     // current selection/hover from scratch — otherwise the highlight is lost
     // whenever the filtered point set changes.
@@ -230,7 +290,7 @@ export default function MapView(props: Props) {
     prevHoveredRef.current = null;
     applyFeatureStateDelta(m, prevSelectedRef, selectedId, 'selected');
     applyFeatureStateDelta(m, prevHoveredRef, hoveredId, 'hovered');
-    pushSelected(m, selectedId ? blocks.find(b => b.id === selectedId) : null);
+    pushSelected(m, selectedId ? blocks.find(b => b.id === selectedId) : null, heatmapFactorRef.current);
   }, [blocks]);
 
   // Delta state updates — O(1) per change instead of O(n).
@@ -238,9 +298,24 @@ export default function MapView(props: Props) {
     const m = mapRef.current;
     if (!m || !loadedRef.current) return;
     applyFeatureStateDelta(m, prevSelectedRef, selectedId, 'selected');
-    pushSelected(m, selectedId ? blocks.find(b => b.id === selectedId) : null);
+    pushSelected(m, selectedId ? blocks.find(b => b.id === selectedId) : null, heatmapFactorRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
+
+  // Heatmap toggle — re-serialize with the new per-feature values, restyle the
+  // dot coloring, and reapply selection/hover (setData clears feature-state).
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m || !loadedRef.current) return;
+    pushData(m, blocks, heatmapFactor);
+    prevSelectedRef.current = null;
+    prevHoveredRef.current = null;
+    applyFeatureStateDelta(m, prevSelectedRef, selectedId, 'selected');
+    applyFeatureStateDelta(m, prevHoveredRef, hoveredId, 'hovered');
+    pushSelected(m, selectedId ? blocks.find(b => b.id === selectedId) : null, heatmapFactor);
+    applyHeatmapStyle(m, heatmapFactor);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heatmapFactor]);
 
   useEffect(() => {
     const m = mapRef.current;
@@ -257,13 +332,14 @@ export default function MapView(props: Props) {
     const onStyle = () => {
       loadedRef.current = true;
       setupLayers(m);
-      pushData(m, blocks);
+      pushData(m, blocks, heatmapFactorRef.current);
       // Reset delta refs so state re-applies cleanly onto the rebuilt source.
       prevSelectedRef.current = null;
       prevHoveredRef.current = null;
       applyFeatureStateDelta(m, prevSelectedRef, selectedId, 'selected');
       applyFeatureStateDelta(m, prevHoveredRef, hoveredId, 'hovered');
-      pushSelected(m, selectedId ? blocks.find(b => b.id === selectedId) : null);
+      pushSelected(m, selectedId ? blocks.find(b => b.id === selectedId) : null, heatmapFactorRef.current);
+      applyHeatmapStyle(m, heatmapFactorRef.current);
     };
     m.once('style.load', onStyle);
     return () => { m.off('style.load', onStyle); };
@@ -476,7 +552,7 @@ function setupLayers(map: MLMap) {
   });
 }
 
-function pushData(map: MLMap, blocks: Block[]) {
+function pushData(map: MLMap, blocks: Block[], heatmapFactor: string | null) {
   const src = map.getSource('blocks') as maplibregl.GeoJSONSource | undefined;
   if (!src) return;
   // Build a fresh FeatureCollection. With 60k blocks this is the most
@@ -494,6 +570,8 @@ function pushData(map: MLMap, blocks: Block[]) {
         score: b.riskScore,
         band: b.riskBand,
         name: b.name,
+        // Heatmap value for the active factor (-1 when none/unavailable).
+        hm: heatValue(b, heatmapFactor),
       },
     };
   }
@@ -501,7 +579,7 @@ function pushData(map: MLMap, blocks: Block[]) {
 }
 
 // Feed the dedicated overlay source with just the selected block (or clear it).
-function pushSelected(map: MLMap, block: Block | null | undefined) {
+function pushSelected(map: MLMap, block: Block | null | undefined, heatmapFactor: string | null) {
   const src = map.getSource('selected-block') as maplibregl.GeoJSONSource | undefined;
   if (!src) return;
   const features: GeoJSON.Feature[] = block
@@ -509,7 +587,10 @@ function pushSelected(map: MLMap, block: Block | null | undefined) {
         type: 'Feature',
         id: block.id,
         geometry: { type: 'Point', coordinates: [block.coordinate.lng, block.coordinate.lat] },
-        properties: { id: block.id, score: block.riskScore, band: block.riskBand, name: block.name },
+        properties: {
+          id: block.id, score: block.riskScore, band: block.riskBand, name: block.name,
+          hm: heatValue(block, heatmapFactor),
+        },
       }]
     : [];
   src.setData({ type: 'FeatureCollection', features });

@@ -371,6 +371,161 @@ export async function updateBlockStatus(id: string, status: BlockStatus): Promis
   await refreshOne(id);
 }
 
+// Refetch a set of blocks (by id) and patch them into the cache in place,
+// emitting once at the end. Used after a bulk import so derived fields
+// (status, last_inspected) reflect the new inspection rows without a full
+// 60k-row reload.
+async function refreshBlocks(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const nextById = new Map<string, Block>();
+  const CHUNK = 300;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    const { data, error } = await supabase
+      .from('blocks_with_status')
+      .select(BLOCK_COLUMNS)
+      .in('id', chunk);
+    if (error) throw error;
+    for (const row of (data ?? []) as BlockRow[]) {
+      // Preserve already-loaded factor breakdowns; they aren't on this view fetch.
+      nextById.set(row.id, rowToBlock(row, _byId.get(row.id)?.factors));
+    }
+  }
+  if (nextById.size === 0) return;
+  for (let i = 0; i < _blocks.length; i++) {
+    const n = nextById.get(_blocks[i].id);
+    if (n) _blocks[i] = n;
+  }
+  for (const [id, b] of nextById) _byId.set(id, b);
+  emit();
+}
+
+export interface InspectionImportRow {
+  objectId: string;
+  /** ISO date, YYYY-MM-DD. */
+  date: string;
+}
+
+export interface InspectionImportResult {
+  totalRows: number;          // valid rows handed in
+  inserted: number;           // rows written to inspections
+  matchedBlocks: number;      // distinct blocks that got at least one row
+  unmatched: number;          // rows whose object_id had no matching block
+  unmatchedSamples: string[]; // a few example unmatched object_ids
+}
+
+// Bulk-load inspection events from a parsed CSV. Each row is linked to its
+// block by matching object_id. Runs entirely as the signed-in user, so the
+// inspections RLS policy + created_by trigger are satisfied (no privileged
+// access needed). Rows with no matching block are skipped and reported back.
+export async function importInspections(
+  rows: InspectionImportRow[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<InspectionImportResult> {
+  const { data: userRes } = await supabase.auth.getUser();
+  const uid = userRes.user?.id;
+  if (!uid) throw new Error('Not authenticated');
+
+  // 1) Resolve the CSV's id → block uuid. Despite the column being labelled
+  //    "object_id" in the CSV, it actually matches blocks.building_record_number.
+  //    Query only the ids we need, chunked to keep the URL within PostgREST limits.
+  const uniqueObjectIds = [...new Set(rows.map(r => r.objectId))];
+  const idMap = new Map<string, string>();
+  const LOOKUP_CHUNK = 500;
+  for (let i = 0; i < uniqueObjectIds.length; i += LOOKUP_CHUNK) {
+    const chunk = uniqueObjectIds.slice(i, i + LOOKUP_CHUNK);
+    const { data, error } = await supabase
+      .from('blocks')
+      .select('id, building_record_number')
+      .in('building_record_number', chunk);
+    if (error) throw error;
+    for (const row of (data ?? []) as { id: string; building_record_number: string }[]) {
+      idMap.set(row.building_record_number, row.id);
+    }
+  }
+
+  // 2) Build insert payloads for matched rows; collect unmatched object_ids.
+  const inserts: { block_id: string; inspected_at: string; created_by: string }[] = [];
+  const unmatched = new Set<string>();
+  for (const r of rows) {
+    const blockId = idMap.get(r.objectId);
+    if (!blockId) { unmatched.add(r.objectId); continue; }
+    inserts.push({ block_id: blockId, inspected_at: r.date, created_by: uid });
+  }
+
+  // 3) Insert in batches.
+  const INSERT_CHUNK = 500;
+  let inserted = 0;
+  for (let i = 0; i < inserts.length; i += INSERT_CHUNK) {
+    const chunk = inserts.slice(i, i + INSERT_CHUNK);
+    const { error } = await supabase.from('inspections').insert(chunk);
+    if (error) throw error;
+    inserted += chunk.length;
+    onProgress?.(inserted, inserts.length);
+  }
+
+  // 4) Refresh affected blocks so the UI reflects new statuses/dates.
+  const affected = [...new Set(inserts.map(x => x.block_id))];
+  await refreshBlocks(affected);
+
+  return {
+    totalRows: rows.length,
+    inserted,
+    matchedBlocks: affected.length,
+    unmatched: rows.length - inserts.length,
+    unmatchedSamples: [...unmatched].slice(0, 8),
+  };
+}
+
+const MS_PER_YEAR = 365.25 * 24 * 3600 * 1000;
+
+// Inverse of inspectionAgeScore: pick the last-inspection date that would
+// reproduce a given risk score on the linear 1yr→30yr scale.
+//   score 0   → 1 year ago
+//   score 100 → 30 years ago
+function dateForScore(score: number): string {
+  const clamped = Math.max(0, Math.min(100, score));
+  const yearsAgo = 1 + (clamped / 100) * (30 - 1);
+  return new Date(Date.now() - yearsAgo * MS_PER_YEAR).toISOString().slice(0, 10);
+}
+
+// Generate one mock inspection per block, dated so its age maps back to the
+// block's current risk score. Inserts in batches, then patches the in-memory
+// cache so the UI reflects the new dates/status without a full reload.
+export async function generateMockInspections(
+  onProgress?: (done: number, total: number) => void,
+): Promise<{ inserted: number }> {
+  const { data: userRes } = await supabase.auth.getUser();
+  const uid = userRes.user?.id;
+  if (!uid) throw new Error('Not authenticated');
+
+  const items = _blocks.map(b => ({ id: b.id, date: dateForScore(b.riskScore) }));
+
+  const INSERT_CHUNK = 500;
+  let inserted = 0;
+  for (let i = 0; i < items.length; i += INSERT_CHUNK) {
+    const chunk = items.slice(i, i + INSERT_CHUNK);
+    const { error } = await supabase
+      .from('inspections')
+      .insert(chunk.map(x => ({ block_id: x.id, inspected_at: x.date, created_by: uid })));
+    if (error) throw error;
+    inserted += chunk.length;
+    onProgress?.(inserted, items.length);
+  }
+
+  // Patch the cache in place: these inserts are the most-recent event per block,
+  // so each block's derived status becomes 'Inspected' with this date.
+  const dateById = new Map(items.map(x => [x.id, x.date]));
+  for (let i = 0; i < _blocks.length; i++) {
+    const date = dateById.get(_blocks[i].id);
+    if (date) _blocks[i] = { ..._blocks[i], lastInspected: date, status: 'Inspected' };
+  }
+  for (const b of _blocks) _byId.set(b.id, b);
+  emit();
+
+  return { inserted };
+}
+
 export async function setBlockNote(id: string, note: string): Promise<void> {
   // Store empty input as NULL so "no note" is unambiguous. note_updated_by /
   // note_updated_at are stamped server-side by a trigger.
