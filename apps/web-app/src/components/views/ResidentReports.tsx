@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   MessageSquareWarning,
   Search,
@@ -14,12 +14,16 @@ import {
   X,
   Building2,
   Inbox,
+  SlidersHorizontal,
 } from 'lucide-react';
 import type { Block } from '../../data/blocks';
 import {
-  fetchReports,
-  setReportRead,
-  setReportSolved,
+  getReports,
+  getReportsStatus,
+  subscribeReports,
+  loadReports,
+  markReportRead,
+  markReportSolved,
   type ResidentReport,
 } from '../../data/reports';
 import { colorForBand, relativeTime } from '../../lib/constants';
@@ -29,6 +33,9 @@ interface Props {
   blocks: Block[];
   /** Jump to this building on the main Risk Monitor map. */
   onJump: (id: string) => void;
+  /** When set (with a changing token), open this building's reports. */
+  focusBlockId?: string | null;
+  focusToken?: number;
 }
 
 // Triage state of a report, derived from its read_at / solved_at stamps.
@@ -56,10 +63,11 @@ function formatDateTime(iso: string): string {
   });
 }
 
-export default function ResidentReports({ blocks, onJump }: Props) {
-  const [reports, setReports] = useState<ResidentReport[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export default function ResidentReports({ blocks, onJump, focusBlockId, focusToken }: Props) {
+  const reports = useSyncExternalStore(subscribeReports, getReports, getReports);
+  const status = useSyncExternalStore(subscribeReports, getReportsStatus, getReportsStatus);
+  const loading = status.loading && reports.length === 0;
+  const error = status.error;
   const [busyId, setBusyId] = useState<string | null>(null);
 
   // Filters / search.
@@ -70,6 +78,42 @@ export default function ResidentReports({ blocks, onJump }: Props) {
   const [districtFilter, setDistrictFilter] = useState<string>('all');
   const [photoOnly, setPhotoOnly] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('recent');
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // Draggable split between the list (left) and the map (right).
+  const splitRef = useRef<HTMLDivElement>(null);
+  const [listWidth, setListWidth] = useState(440);
+  const draggingRef = useRef(false);
+
+  function startDrag(e: React.MouseEvent) {
+    e.preventDefault();
+    draggingRef.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!draggingRef.current || !splitRef.current) return;
+      const rect = splitRef.current.getBoundingClientRect();
+      const w = e.clientX - rect.left;
+      const min = 300;
+      const max = rect.width - 320;
+      setListWidth(Math.max(min, Math.min(max, w)));
+    }
+    function onUp() {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
 
   // Selection: a building filter (one building's reports) and the active report.
   const [buildingFilter, setBuildingFilter] = useState<string | null>(null);
@@ -84,19 +128,20 @@ export default function ResidentReports({ blocks, onJump }: Props) {
     return m;
   }, [blocks]);
 
-  async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      setReports(await fetchReports());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load reports.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { void load(); }, []);
+  // Open a specific building's reports when navigated here from the block
+  // detail. Reset list filters so the building's reports are guaranteed visible.
+  useEffect(() => {
+    if (!focusBlockId) return;
+    setStatusFilter(new Set<StatusFilter>(['new', 'read', 'solved']));
+    setQuery('');
+    setPhotoOnly(false);
+    setDistrictFilter('all');
+    setBuildingFilter(focusBlockId);
+    setSelectedReportId(null);
+    setFiltersOpen(false);
+    setFlyToken(t => t + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusBlockId, focusToken]);
 
   // Districts present among reports (for the district dropdown).
   const districts = useMemo(() => {
@@ -211,43 +256,35 @@ export default function ResidentReports({ blocks, onJump }: Props) {
     setFlyToken(t => t + 1);
   }
 
-  // Optimistic patch helper.
-  function patch(id: string, fields: Partial<ResidentReport>) {
-    setReports(prev => prev.map(r => (r.id === id ? { ...r, ...fields } : r)));
-  }
-
   async function onToggleRead(r: ResidentReport) {
-    const next = !r.readAt;
     setBusyId(r.id);
-    patch(r.id, { readAt: next ? new Date().toISOString() : null });
-    try {
-      const readAt = await setReportRead(r.id, next);
-      patch(r.id, { readAt });
-    } catch {
-      patch(r.id, { readAt: r.readAt }); // revert
-    } finally {
-      setBusyId(null);
-    }
+    try { await markReportRead(r.id, !r.readAt); }
+    catch { /* store reverts the optimistic patch */ }
+    finally { setBusyId(null); }
   }
 
   async function onToggleSolved(r: ResidentReport) {
-    const next = !r.solvedAt;
     setBusyId(r.id);
-    patch(r.id, {
-      solvedAt: next ? new Date().toISOString() : null,
-      readAt: next ? r.readAt ?? new Date().toISOString() : r.readAt,
-    });
-    try {
-      const { solvedAt, readAt } = await setReportSolved(r.id, next);
-      patch(r.id, { solvedAt, readAt });
-    } catch {
-      patch(r.id, { solvedAt: r.solvedAt, readAt: r.readAt }); // revert
-    } finally {
-      setBusyId(null);
-    }
+    try { await markReportSolved(r.id, !r.solvedAt); }
+    catch { /* store reverts the optimistic patch */ }
+    finally { setBusyId(null); }
   }
 
   const filterBuilding = buildingFilter ? blockById.get(buildingFilter) ?? null : null;
+
+  // How many filters differ from their defaults (drives the button badge).
+  const activeFilterCount =
+    (statusFilter.size < STATUS_DEFS.length ? 1 : 0) +
+    (photoOnly ? 1 : 0) +
+    (districtFilter !== 'all' ? 1 : 0) +
+    (sortKey !== 'recent' ? 1 : 0);
+
+  function resetFilters() {
+    setStatusFilter(new Set<StatusFilter>(['new', 'read', 'solved']));
+    setPhotoOnly(false);
+    setDistrictFilter('all');
+    setSortKey('recent');
+  }
 
   return (
     <main className="page reports-page">
@@ -258,11 +295,11 @@ export default function ResidentReports({ blocks, onJump }: Props) {
           <span className="page-count mono">{stats.total}</span>
           <button
             className="action-btn tiny page-import-btn"
-            onClick={() => void load()}
-            disabled={loading}
+            onClick={() => void loadReports(true)}
+            disabled={status.loading}
             title="Reload reports"
           >
-            {loading ? <Loader2 size={11} className="spin" /> : <RefreshCw size={11} />}
+            {status.loading ? <Loader2 size={11} className="spin" /> : <RefreshCw size={11} />}
             Refresh
           </button>
         </div>
@@ -279,64 +316,88 @@ export default function ResidentReports({ blocks, onJump }: Props) {
         </div>
       </header>
 
-      <section className="page-body reports-split">
+      <section className="page-body reports-split" ref={splitRef}>
         {/* ── Left: list + filters ─────────────────────────────────────── */}
-        <div className="reports-list-col">
+        <div className="reports-list-col" style={{ width: listWidth }}>
           <div className="reports-toolbar">
-            <div className="triage-search reports-search">
-              <Search size={13} />
-              <input
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder="Search description, building or district…"
-              />
-              {query && (
-                <button className="search-clear" onClick={() => setQuery('')} title="Clear">
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-
-            <div className="reports-filter-row">
-              <div className="chips">
-                {STATUS_DEFS.map(s => (
-                  <button
-                    key={s.key}
-                    className={`chip neutral ${statusFilter.has(s.key) ? 'on' : ''}`}
-                    onClick={() => toggleStatus(s.key)}
-                  >
-                    {s.label}
+            <div className="reports-search-row">
+              <div className="triage-search reports-search">
+                <Search size={13} />
+                <input
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  placeholder="Search description, building or district…"
+                />
+                {query && (
+                  <button className="search-clear" onClick={() => setQuery('')} title="Clear">
+                    <X size={12} />
                   </button>
-                ))}
+                )}
               </div>
               <button
-                className={`chip neutral ${photoOnly ? 'on' : ''}`}
-                onClick={() => setPhotoOnly(v => !v)}
-                title="Only reports that include a photo"
+                className={`filter-toggle-btn ${filtersOpen ? 'open' : ''} ${activeFilterCount ? 'has-active' : ''}`}
+                onClick={() => setFiltersOpen(v => !v)}
+                title="Filters & sort"
               >
-                <ImageIcon size={11} /> Photo
+                <SlidersHorizontal size={14} />
+                {activeFilterCount > 0 && <span className="filter-badge">{activeFilterCount}</span>}
               </button>
             </div>
 
-            <div className="reports-filter-row">
-              <select
-                className="reports-select"
-                value={districtFilter}
-                onChange={e => setDistrictFilter(e.target.value)}
-              >
-                <option value="all">All districts</option>
-                {districts.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-              <select
-                className="reports-select"
-                value={sortKey}
-                onChange={e => setSortKey(e.target.value as SortKey)}
-              >
-                <option value="recent">Newest first</option>
-                <option value="oldest">Oldest first</option>
-                <option value="risk">Highest risk</option>
-              </select>
-            </div>
+            {filtersOpen && (
+              <div className="reports-filter-panel">
+                <div className="filter-panel-group">
+                  <div className="filter-label">STATUS</div>
+                  <div className="chips">
+                    {STATUS_DEFS.map(s => (
+                      <button
+                        key={s.key}
+                        className={`chip neutral ${statusFilter.has(s.key) ? 'on' : ''}`}
+                        onClick={() => toggleStatus(s.key)}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                    <button
+                      className={`chip neutral ${photoOnly ? 'on' : ''}`}
+                      onClick={() => setPhotoOnly(v => !v)}
+                      title="Only reports that include a photo"
+                    >
+                      <ImageIcon size={11} /> Photo
+                    </button>
+                  </div>
+                </div>
+
+                <div className="filter-panel-group">
+                  <div className="filter-label">DISTRICT &amp; SORT</div>
+                  <div className="reports-filter-row">
+                    <select
+                      className="reports-select"
+                      value={districtFilter}
+                      onChange={e => setDistrictFilter(e.target.value)}
+                    >
+                      <option value="all">All districts</option>
+                      {districts.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                    <select
+                      className="reports-select"
+                      value={sortKey}
+                      onChange={e => setSortKey(e.target.value as SortKey)}
+                    >
+                      <option value="recent">Newest first</option>
+                      <option value="oldest">Oldest first</option>
+                      <option value="risk">Highest risk</option>
+                    </select>
+                  </div>
+                </div>
+
+                {activeFilterCount > 0 && (
+                  <button className="filter-reset-btn" onClick={resetFilters}>
+                    <RotateCcw size={11} /> Reset filters
+                  </button>
+                )}
+              </div>
+            )}
 
             {filterBuilding && (
               <div className="building-filter-bar">
@@ -370,7 +431,7 @@ export default function ResidentReports({ blocks, onJump }: Props) {
               <div className="reports-empty error">
                 <AlertTriangle size={22} />
                 <span>{error}</span>
-                <button className="action-btn tiny" onClick={() => void load()}>Retry</button>
+                <button className="action-btn tiny" onClick={() => void loadReports(true)}>Retry</button>
               </div>
             ) : listReports.length === 0 ? (
               <div className="reports-empty">
@@ -470,6 +531,17 @@ export default function ResidentReports({ blocks, onJump }: Props) {
               })
             )}
           </div>
+        </div>
+
+        {/* Draggable divider to resize the two panes. */}
+        <div
+          className="reports-resizer"
+          onMouseDown={startDrag}
+          role="separator"
+          aria-orientation="vertical"
+          title="Drag to resize"
+        >
+          <span className="reports-resizer-grip" />
         </div>
 
         {/* ── Right: map of buildings with reports ──────────────────────── */}

@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import { X, Clock4, StickyNote, Save, Loader2, Flame } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  X, Clock4, StickyNote, Save, Loader2, Flame, MessageSquareWarning, ChevronRight,
+} from 'lucide-react';
 import type { Block } from '../data/blocks';
 import {
   colorForBand,
@@ -10,12 +12,15 @@ import {
   BUILDING_AGE_FACTOR,
 } from '../lib/constants';
 import { setBlockNote } from '../data/blocks';
+import { subscribeReports, getReports, getReportsStatus } from '../data/reports';
 
 interface Props {
   block: Block | null;
   onClose: () => void;
   heatmapFactor: string | null;
   onToggleHeatmap: (label: string) => void;
+  /** Open this block's resident reports on the Resident Reports page. */
+  onShowReports: (blockId: string) => void;
 }
 
 // `lastInspected` is a plain YYYY-MM-DD date. Render it compactly, e.g. "12 Mar 2026".
@@ -25,7 +30,7 @@ function formatInspectedDate(date: string): string {
   return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export default function BlockDetail({ block, onClose, heatmapFactor, onToggleHeatmap }: Props) {
+export default function BlockDetail({ block, onClose, heatmapFactor, onToggleHeatmap, onShowReports }: Props) {
   // Keep last block while animating out so content doesn't blank during exit.
   const lastBlockRef = useRef<Block | null>(null);
   const [displayBlock, setDisplayBlock] = useState<Block | null>(null);
@@ -122,8 +127,47 @@ export default function BlockDetail({ block, onClose, heatmapFactor, onToggleHea
         </div>
 
         <NotesSection block={b} />
+
+        <ReportsSection blockId={b.id} onShowReports={onShowReports} />
       </div>
     </aside>
+  );
+}
+
+// Live count of open (unsolved) resident reports for this block. Clicking jumps
+// to the Resident Reports page with this building's reports already open.
+function ReportsSection({
+  blockId, onShowReports,
+}: { blockId: string; onShowReports: (id: string) => void }) {
+  const reports = useSyncExternalStore(subscribeReports, getReports, getReports);
+  const status = useSyncExternalStore(subscribeReports, getReportsStatus, getReportsStatus);
+  const openCount = useMemo(
+    () => reports.reduce((n, r) => (r.blockId === blockId && !r.solvedAt ? n + 1 : n), 0),
+    [reports, blockId],
+  );
+  const loading = status.loading && reports.length === 0;
+
+  return (
+    <button
+      className={`section reports-link ${openCount > 0 ? 'has-open' : ''}`}
+      onClick={() => onShowReports(blockId)}
+      title="View resident reports for this block"
+    >
+      <span className="reports-link-icon">
+        {loading ? <Loader2 size={14} className="spin" /> : <MessageSquareWarning size={14} />}
+      </span>
+      <span className="reports-link-text">
+        <span className="reports-link-count">
+          {loading ? 'Loading…' : (
+            <>
+              <b className="mono">{openCount}</b> open {openCount === 1 ? 'report' : 'reports'}
+            </>
+          )}
+        </span>
+        <span className="reports-link-sub">Resident reports for this block</span>
+      </span>
+      <ChevronRight size={14} className="reports-link-chevron" />
+    </button>
   );
 }
 
