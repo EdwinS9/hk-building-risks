@@ -116,6 +116,9 @@ All reads and mutations go through `src/data/blocks.ts`. That module:
 - Imports inspection rows into the `inspections` table. `created_by` is
   stamped server-side by a `BEFORE INSERT` trigger to `auth.uid()` — the client
   cannot impersonate another user.
+- The Account page can bulk import inspection logs from `object_id,date` CSVs,
+  matching `object_id` against `blocks.building_record_number`; blocks missing
+  from the CSV receive one generated fallback inspection date.
 - The UI does not compute or guess risk scores; it consumes them.
 
 ## Security model

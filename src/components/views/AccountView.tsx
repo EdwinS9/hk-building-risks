@@ -15,15 +15,18 @@ import {
 import { getAuth, subscribeAuth } from '../../lib/auth';
 import { getDbStatus, subscribeDbStatus } from '../../lib/dbStatus';
 import {
+  importInspectionsWithMockFallback,
   importScores,
   previewScoreImport,
+  type InspectionBackfillImportResult,
+  type InspectionImportRow,
   type ScoreImportResult,
   type ScoreImportRow,
   type ScoreMatchMode,
   type ScoreMatchPreview,
   type ScoreValueScale,
 } from '../../data/blocks';
-import { parseScoresCsv } from '../../lib/csvImport';
+import { parseInspectionsCsv, parseScoresCsv } from '../../lib/csvImport';
 
 interface Props {
   onSignOut: () => void;
@@ -53,11 +56,29 @@ interface ScoreImportState {
   result?: ScoreImportResult;
 }
 
+type InspectionImportPhase = 'idle' | 'reading' | 'importing' | 'done' | 'error';
+
+interface InspectionImportState {
+  phase: InspectionImportPhase;
+  message: string;
+  fileName?: string;
+  rows?: InspectionImportRow[];
+  skipped?: number;
+  parseErrors?: string[];
+  progress?: { done: number; total: number };
+  result?: InspectionBackfillImportResult;
+}
+
 export default function AccountView({ onSignOut }: Props) {
   const auth = useSyncExternalStore(subscribeAuth, getAuth, getAuth);
   const db = useSyncExternalStore(subscribeDbStatus, getDbStatus, getDbStatus);
   const scoreFileRef = useRef<HTMLInputElement>(null);
+  const inspectionFileRef = useRef<HTMLInputElement>(null);
   const [scoreImport, setScoreImport] = useState<ScoreImportState>({
+    phase: 'idle',
+    message: '',
+  });
+  const [inspectionImport, setInspectionImport] = useState<InspectionImportState>({
     phase: 'idle',
     message: '',
   });
@@ -138,6 +159,80 @@ export default function AccountView({ onSignOut }: Props) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (file) void handleScoreFile(file);
+  }
+
+  async function handleInspectionFile(file: File) {
+    setInspectionImport({
+      phase: 'reading',
+      message: `Reading ${file.name}…`,
+      fileName: file.name,
+    });
+
+    try {
+      const parsed = parseInspectionsCsv(await file.text());
+      if (parsed.rows.length === 0) {
+        setInspectionImport({
+          phase: 'error',
+          message: parsed.errors[0] ?? 'No valid inspection rows found in the file.',
+          fileName: file.name,
+          skipped: parsed.skipped,
+          parseErrors: parsed.errors,
+        });
+        return;
+      }
+
+      const ok = window.confirm(
+        `Import ${parsed.rows.length.toLocaleString()} inspection CSV rows?\n\n` +
+        `For every block without a matching CSV object_id/building record number, ` +
+        `the app will insert one mock inspection dated randomly between 2022-01-01 and 2026-05-01.`,
+      );
+      if (!ok) {
+        setInspectionImport({
+          phase: 'idle',
+          message: '',
+        });
+        return;
+      }
+
+      setInspectionImport({
+        phase: 'importing',
+        message: 'Importing real inspections and generating fallback inspections…',
+        fileName: file.name,
+        rows: parsed.rows,
+        skipped: parsed.skipped,
+        parseErrors: parsed.errors,
+      });
+
+      const result = await importInspectionsWithMockFallback(parsed.rows, (done, total) => {
+        setInspectionImport(prev => ({
+          ...prev,
+          phase: 'importing',
+          progress: { done, total },
+        }));
+      });
+
+      setInspectionImport({
+        phase: 'done',
+        message: `${result.realInserted.toLocaleString()} real rows and ${result.mockInserted.toLocaleString()} fallback rows inserted`,
+        fileName: file.name,
+        rows: parsed.rows,
+        skipped: parsed.skipped,
+        parseErrors: parsed.errors,
+        result,
+      });
+    } catch (err) {
+      setInspectionImport({
+        phase: 'error',
+        message: err instanceof Error ? err.message : 'Inspection import failed.',
+        fileName: file.name,
+      });
+    }
+  }
+
+  function onPickInspectionFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) void handleInspectionFile(file);
   }
 
   async function runScoreImport() {
@@ -374,6 +469,109 @@ export default function AccountView({ onSignOut }: Props) {
               {scoreImport.parseErrors && scoreImport.parseErrors.length > 0 && (
                 <div className="score-import-errors">
                   {scoreImport.parseErrors.slice(0, 4).map(e => <div key={e}>{e}</div>)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-section-head account-import-head">
+            <div>
+              <div className="settings-section-title">Inspection log import</div>
+              <div className="settings-section-desc">
+                Upload object_id and date rows. Missing blocks receive one fallback inspection date.
+              </div>
+            </div>
+            <button
+              className="action-btn"
+              onClick={() => inspectionFileRef.current?.click()}
+              disabled={inspectionImport.phase === 'reading' || inspectionImport.phase === 'importing'}
+            >
+              {inspectionImport.phase === 'reading' || inspectionImport.phase === 'importing'
+                ? <Loader2 size={13} className="spin" />
+                : <Upload size={13} />}
+              Import CSV
+            </button>
+            <input
+              ref={inspectionFileRef}
+              type="file"
+              accept=".csv,text/csv"
+              hidden
+              onChange={onPickInspectionFile}
+            />
+          </div>
+
+          {inspectionImport.phase !== 'idle' && (
+            <div className={`import-banner import-${
+              inspectionImport.phase === 'reading' || inspectionImport.phase === 'importing'
+                ? 'working'
+                : inspectionImport.phase === 'error'
+                  ? 'error'
+                  : 'done'
+            }`}>
+              {(inspectionImport.phase === 'reading' || inspectionImport.phase === 'importing') && <Loader2 size={13} className="spin" />}
+              {inspectionImport.phase === 'done' && <CheckCircle2 size={13} />}
+              {inspectionImport.phase === 'error' && <AlertTriangle size={13} />}
+              <span className="import-banner-text">
+                {inspectionImport.fileName && <span className="mono">{inspectionImport.fileName}</span>}
+                {inspectionImport.fileName ? ' · ' : ''}
+                {inspectionImport.message}
+                {inspectionImport.phase === 'importing' && inspectionImport.progress && inspectionImport.progress.total > 0 && (
+                  <span className="mono"> {inspectionImport.progress.done}/{inspectionImport.progress.total}</span>
+                )}
+              </span>
+            </div>
+          )}
+
+          {inspectionImport.phase !== 'idle' && (
+            <div className="score-import-panel">
+              <div className="score-import-summary">
+                <AccountField
+                  icon={<Upload size={13} />}
+                  label="Valid CSV rows"
+                  value={(inspectionImport.rows?.length ?? 0).toLocaleString()}
+                  mono
+                />
+                <AccountField
+                  icon={<AlertTriangle size={13} />}
+                  label="Skipped rows"
+                  value={(inspectionImport.skipped ?? 0).toLocaleString()}
+                  mono
+                  tone={inspectionImport.skipped ? 'warn' : undefined}
+                />
+                {inspectionImport.result && (
+                  <>
+                    <AccountField
+                      icon={<CheckCircle2 size={13} />}
+                      label="Matched blocks"
+                      value={`${inspectionImport.result.matchedBlocks.toLocaleString()} / ${inspectionImport.result.totalBlocks.toLocaleString()}`}
+                      mono
+                      tone="ok"
+                    />
+                    <AccountField
+                      icon={<Database size={13} />}
+                      label="Inserted rows"
+                      value={inspectionImport.result.inserted.toLocaleString()}
+                      mono
+                      tone="ok"
+                    />
+                  </>
+                )}
+              </div>
+
+              {inspectionImport.result && inspectionImport.result.unmatched > 0 && (
+                <div className="score-import-errors">
+                  {inspectionImport.result.unmatched.toLocaleString()} CSV rows did not match a building record number.
+                  {inspectionImport.result.unmatchedSamples.length > 0 && (
+                    <div className="mono">Examples: {inspectionImport.result.unmatchedSamples.join(', ')}</div>
+                  )}
+                </div>
+              )}
+
+              {inspectionImport.parseErrors && inspectionImport.parseErrors.length > 0 && (
+                <div className="score-import-errors">
+                  {inspectionImport.parseErrors.slice(0, 4).map(e => <div key={e}>{e}</div>)}
                 </div>
               )}
             </div>

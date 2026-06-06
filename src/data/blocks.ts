@@ -582,6 +582,47 @@ export interface InspectionImportResult {
   unmatchedSamples: string[]; // a few example unmatched object_ids
 }
 
+export interface InspectionBackfillImportResult extends InspectionImportResult {
+  realInserted: number;
+  mockInserted: number;
+  totalBlocks: number;
+}
+
+interface InspectionImportBlockRow {
+  id: string;
+  building_record_number: string | null;
+}
+
+async function fetchAllInspectionImportBlocks(): Promise<InspectionImportBlockRow[]> {
+  const out: InspectionImportBlockRow[] = [];
+  let start = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('blocks')
+      .select('id, building_record_number')
+      .order('id', { ascending: true })
+      .range(start, start + PAGE_SIZE - 1);
+    if (error) throw error;
+    const batch = (data ?? []) as InspectionImportBlockRow[];
+    out.push(...batch);
+    if (batch.length < PAGE_SIZE) break;
+    start += PAGE_SIZE;
+  }
+  return out;
+}
+
+function randomInspectionDate(): string {
+  const start = new Date('2022-01-01T00:00:00Z').getTime();
+  const end = new Date('2026-05-01T00:00:00Z').getTime();
+  const ts = start + Math.floor(Math.random() * (end - start + 1));
+  return new Date(ts).toISOString().slice(0, 10);
+}
+
+function maxIsoDate(a: string | null, b: string): string {
+  if (!a) return b;
+  return a > b ? a : b;
+}
+
 // Bulk-load inspection events from a parsed CSV. Each row is linked to its
 // block by matching object_id. Runs entirely as the signed-in user, so the
 // inspections RLS policy + created_by trigger are satisfied (no privileged
@@ -641,6 +682,80 @@ export async function importInspections(
     inserted,
     matchedBlocks: affected.length,
     unmatched: rows.length - inserts.length,
+    unmatchedSamples: [...unmatched].slice(0, 8),
+  };
+}
+
+export async function importInspectionsWithMockFallback(
+  rows: InspectionImportRow[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<InspectionBackfillImportResult> {
+  const { data: userRes } = await supabase.auth.getUser();
+  const uid = userRes.user?.id;
+  if (!uid) throw new Error('Not authenticated');
+
+  const blocks = await fetchAllInspectionImportBlocks();
+  const idMap = new Map<string, string>();
+  for (const block of blocks) {
+    if (block.building_record_number) idMap.set(block.building_record_number, block.id);
+  }
+
+  const matchedBlocks = new Set<string>();
+  const unmatched = new Set<string>();
+  const inserts: { block_id: string; inspected_at: string; created_by: string }[] = [];
+  const latestById = new Map<string, string>();
+
+  for (const row of rows) {
+    const blockId = idMap.get(row.objectId);
+    if (!blockId) {
+      unmatched.add(row.objectId);
+      continue;
+    }
+
+    matchedBlocks.add(blockId);
+    inserts.push({ block_id: blockId, inspected_at: row.date, created_by: uid });
+    latestById.set(blockId, maxIsoDate(latestById.get(blockId) ?? null, row.date));
+  }
+
+  let mockInserted = 0;
+  for (const block of blocks) {
+    if (matchedBlocks.has(block.id)) continue;
+    const date = randomInspectionDate();
+    inserts.push({ block_id: block.id, inspected_at: date, created_by: uid });
+    latestById.set(block.id, date);
+    mockInserted++;
+  }
+
+  const INSERT_CHUNK = 500;
+  let inserted = 0;
+  for (let i = 0; i < inserts.length; i += INSERT_CHUNK) {
+    const chunk = inserts.slice(i, i + INSERT_CHUNK);
+    const { error } = await supabase.from('inspections').insert(chunk);
+    if (error) throw error;
+    inserted += chunk.length;
+    onProgress?.(inserted, inserts.length);
+  }
+
+  for (let i = 0; i < _blocks.length; i++) {
+    const date = latestById.get(_blocks[i].id);
+    if (!date) continue;
+    _blocks[i] = {
+      ..._blocks[i],
+      lastInspected: maxIsoDate(_blocks[i].lastInspected, date),
+      status: 'Inspected',
+    };
+  }
+  for (const b of _blocks) _byId.set(b.id, b);
+  emit();
+
+  return {
+    totalRows: rows.length,
+    inserted,
+    realInserted: inserted - mockInserted,
+    mockInserted,
+    totalBlocks: blocks.length,
+    matchedBlocks: matchedBlocks.size,
+    unmatched: rows.length - (inserted - mockInserted),
     unmatchedSamples: [...unmatched].slice(0, 8),
   };
 }
