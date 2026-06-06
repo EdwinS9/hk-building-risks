@@ -1026,6 +1026,12 @@ input {
   font-size: 11px;
   color: var(--text-1);
 }
+.factor-detail {
+  margin-left: 8px;
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
 .factor-pct { color: var(--text-0); }
 .factor-bar {
   margin-top: 4px;

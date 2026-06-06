@@ -1,12 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, CalendarCheck, CheckCircle2, Clock4, StickyNote, Save, Loader2 } from 'lucide-react';
+import { X, Clock4, StickyNote, Save, Loader2 } from 'lucide-react';
 import type { Block } from '../data/blocks';
 import { colorForBand, relativeTime } from '../lib/constants';
-import { updateBlockStatus, setBlockNote } from '../data/blocks';
+import { setBlockNote } from '../data/blocks';
 
 interface Props {
   block: Block | null;
   onClose: () => void;
+}
+
+const MS_PER_YEAR = 365.25 * 24 * 3600 * 1000;
+
+// Score the inspection age as a risk factor (0–100):
+//   • 0 points until the inspection is 1 year in the past
+//   • linear climb from there, reaching 100 at 30 years
+//   • never inspected ⇒ treated as fully overdue (100)
+function inspectionAgeScore(lastInspected: string | null): number {
+  if (!lastInspected) return 100;
+  const then = new Date(lastInspected).getTime();
+  if (Number.isNaN(then)) return 0;
+  const years = (Date.now() - then) / MS_PER_YEAR;
+  if (years <= 1) return 0;
+  if (years >= 30) return 100;
+  return Math.round(((years - 1) / (30 - 1)) * 100);
+}
+
+// `lastInspected` is a plain YYYY-MM-DD date. Render it compactly, e.g. "12 Mar 2026".
+function formatInspectedDate(date: string): string {
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return date;
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export default function BlockDetail({ block, onClose }: Props) {
@@ -67,9 +90,9 @@ export default function BlockDetail({ block, onClose }: Props) {
 
         <div className="section">
           <div className="section-label">RISK BREAKDOWN</div>
-          {b.factors && b.factors.length > 0 ? (
-            <div className="factors">
-              {[...b.factors].sort((x, y) => y.contribution - x.contribution).map(f => (
+          <div className="factors">
+            {b.factors && b.factors.length > 0 &&
+              [...b.factors].sort((x, y) => y.contribution - x.contribution).map(f => (
                 <div className="factor" key={f.label}>
                   <div className="factor-row">
                     <span className="factor-label">{f.label}</span>
@@ -83,46 +106,34 @@ export default function BlockDetail({ block, onClose }: Props) {
                   </div>
                 </div>
               ))}
-            </div>
-          ) : (
-            <div className="empty-note">Factor breakdown not yet available for this block.</div>
-          )}
-        </div>
 
-        <div className="section meta-grid">
-          <div>
-            <div className="meta-label">LAST INSPECTED</div>
-            <div className="meta-value mono">
-              {b.lastInspected ? relativeTime(b.lastInspected) : '—'}
-            </div>
-          </div>
-          <div>
-            <div className="meta-label">STATUS</div>
-            <div className={`meta-value status-${b.status.replace(' ', '-').toLowerCase()}`}>
-              {b.status}
-            </div>
+            {/* Inspection age scored as its own risk factor. */}
+            {(() => {
+              const ageScore = inspectionAgeScore(b.lastInspected);
+              return (
+                <div className="factor" key="__last-inspected">
+                  <div className="factor-row">
+                    <span className="factor-label">
+                      Last inspected
+                      <span className="factor-detail">
+                        {b.lastInspected ? formatInspectedDate(b.lastInspected) : 'never'}
+                      </span>
+                    </span>
+                    <span className="factor-pct mono">{ageScore}%</span>
+                  </div>
+                  <div className="factor-bar">
+                    <div
+                      className="factor-bar-fill"
+                      style={{ width: `${ageScore}%`, background: color }}
+                    />
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
         <NotesSection block={b} />
-
-        <div className="section actions">
-          <button
-            className="action-btn"
-            disabled={b.status === 'Scheduled'}
-            onClick={() => updateBlockStatus(b.id, 'Scheduled')}
-          >
-            <CalendarCheck size={13} /> Schedule inspection
-          </button>
-          <button
-            className="action-btn primary"
-            disabled={b.status === 'Inspected'}
-            onClick={() => updateBlockStatus(b.id, 'Inspected')}
-          >
-            <CheckCircle2 size={13} /> Mark inspected
-          </button>
-        </div>
-
       </div>
     </aside>
   );
