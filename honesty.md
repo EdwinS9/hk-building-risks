@@ -11,3 +11,6 @@ External Data:
 Used Previous Work
 - Setup of mirzapolat.com domain and hosting
 
+Road Cracks:
+- Crack locations are likely estimates based on InSAR velocity gradients. Drone and satellite computer vision is intended as secondary confirmation of the given areas.
+
