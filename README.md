@@ -5,6 +5,19 @@ ranks buildings by structural risk; an officer-facing dashboard triages them;
 a resident app lets the public report issues. Both apps share one Supabase
 (Postgres + Auth) database.
 
+## Contents
+
+- [Repository layout](#repository-layout)
+- [The two apps](#the-two-apps)
+- [Screenshots](#screenshots)
+- [Shared database (Supabase)](#shared-database-supabase)
+- [Running an app](#running-an-app)
+- [ML pipeline](#ml-pipeline)
+- [How the risk score works](#how-the-risk-score-works)
+- [Road-crack layer](#road-crack-layer)
+- [Data sources and acknowledgements](#data-sources-and-acknowledgements)
+- [License](#license)
+
 ## Repository layout
 
 ```
@@ -38,6 +51,17 @@ Both connect to the **same** Supabase project using its public URL + anon key.
 Set those up once (below), then each app gets its own `.env` from its
 `.env.example`.
 
+## Screenshots
+
+> Screenshots coming soon. Drop `dashboard.png` and `resident.png` into
+> `docs/screenshots/`, then uncomment the block below.
+
+<!--
+| Officer dashboard | Resident app |
+|---|---|
+| ![Officer triage dashboard](docs/screenshots/dashboard.png) | ![Resident reporting PWA](docs/screenshots/resident.png) |
+-->
+
 ## Shared database (Supabase)
 
 You need the [Supabase CLI](https://supabase.com/docs/guides/cli) and a Supabase
@@ -54,6 +78,10 @@ supabase db push
 
 This applies the migrations in `supabase/migrations/`:
 
+<details>
+<summary>Migrations applied by <code>db push</code></summary>
+
+
 - `20260606120000_initial_schema.sql` — tables (`blocks`, `scores`,
   `inspections`, legacy `schedule`), the `blocks_with_status` view, triggers.
 - `20260606120100_security_policies.sql` — RLS policies. **Anonymous users get
@@ -64,6 +92,8 @@ This applies the migrations in `supabase/migrations/`:
 - `20260606120400_import_scores.sql` — narrow authenticated score-import
   function used by the web app's CSV import.
 - `20260606130000_resident_reports.sql` — resident report submissions.
+
+</details>
 
 ### (Optional) Seed with mock data
 
@@ -96,6 +126,20 @@ npm run dev
 The risk scores the apps display come from `ml/`. See
 [`ml/README.md`](ml/README.md). Python managed with [uv](https://docs.astral.sh/uv/).
 
+## How the risk score works
+
+Each block gets a 0 to 100 risk score from a weighted blend of building
+attributes (age, type, statutory-notice history) and ground deformation measured
+by satellite radar (InSAR). Differential settlement is a strong predictor of
+structural distress, so blocks over subsiding ground rank higher.
+
+![Sentinel-1 InSAR interferogram over Hong Kong](docs/pitch/interferogram_hk.png)
+
+*Sentinel-1 InSAR interferogram over Hong Kong. Each colour cycle is ground
+displacement along the satellite line of sight.*
+
+![InSAR vertical velocity vs building age](ml/data-analysis/plots/InSAR_vertical_velocity_vs_building_age.png)
+
 ## Road-crack layer
 
 The crack markers on the map are a heuristic for figuring out the places where
@@ -104,6 +148,18 @@ ground settlement is a primary driver of pavement cracking). They flag candidate
 areas rather than confirmed defects. Drone and satellite computer vision is
 intended as the secondary confirmation step for these flagged areas. See
 [`honesty.md`](honesty.md).
+
+## Data sources and acknowledgements
+
+- **Hong Kong building stock and inspection records** from the Buildings
+  Department ([bd.gov.hk](https://www.bd.gov.hk/)).
+- **Sentinel-1 SAR** imagery from the European Space Agency, accessed via the
+  [Alaska Satellite Facility](https://search.asf.alaska.edu/).
+- **Crack-detection training data**: CRACK500 (asphalt) and the Ozgenel concrete
+  crack dataset; see [`ml/cracks/README.md`](ml/cracks/README.md).
+
+These carry their own upstream licenses, separate from this repository's MIT
+license. See [`honesty.md`](honesty.md) for the full tool and data disclosure.
 
 ## License
 
