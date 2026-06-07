@@ -1737,7 +1737,7 @@ input {
   padding: 0;
 }
 
-/* Standalone admin console (route: /login). Rendered outside the dashboard
+/* Standalone admin console (route: /data). Rendered outside the dashboard
    shell, so it owns its own full-viewport background + the page has no TopBar
    to clear at the top. */
 .admin-root {

@@ -24,7 +24,7 @@ import type { ViewKey } from './lib/views';
 import { planRoute, attachRoadGeometry, type RouteResult } from './lib/routePlanner';
 
 // Minimal path-based routing without a router dependency. The admin console
-// lives at /login — reachable only by typing the URL (no nav button links to
+// lives at /data — reachable only by typing the URL (no nav button links to
 // it) and still gated behind authentication.
 function usePathname(): string {
   const [path, setPath] = useState(() => window.location.pathname);
@@ -37,7 +37,7 @@ function usePathname(): string {
 }
 
 function isAdminPath(path: string): boolean {
-  return path === '/login' || path === '/login/';
+  return path === '/data' || path === '/data/';
 }
 
 export default function App() {
@@ -64,7 +64,7 @@ export default function App() {
     return <LoginScreen />;
   }
 
-  // Authenticated admin console — only served when the URL is /login.
+  // Authenticated admin console — only served when the URL is /data.
   if (isAdminPath(path)) {
     return <AdminConsole />;
   }
