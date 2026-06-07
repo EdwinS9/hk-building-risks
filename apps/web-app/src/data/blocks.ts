@@ -842,22 +842,47 @@ function calculateRiskScore(block: Block): number {
 
 export async function recalculateRiskScores(): Promise<{ updated: number; total: number }> {
   const { a1, a2, a3 } = getScoreParams();
+  const now = new Date().toISOString();
 
-  // Try the parameterised sigmoid version first; fall back to the old
-  // parameterless overload if the migration hasn't been applied yet.
-  let result = await supabase.rpc('recalculate_block_risk_scores', {
+  // Compute sigmoid scores client-side for all blocks upfront — needed both
+  // for the in-memory patch and as the fallback DB write if the RPC fails.
+  const computed = _blocks.map(b => ({ id: b.id, score: calculateRiskScore(b) }));
+
+  // Primary path: server-side RPC computes + writes all rows in one statement.
+  const rpcResult = await supabase.rpc('recalculate_block_risk_scores', {
     p_a1: a1, p_a2: a2, p_a3: a3,
   });
-  if (result.error?.code === 'PGRST202') {
-    result = await supabase.rpc('recalculate_block_risk_scores' as any);
-  }
-  const { data, error } = result;
-  if (error) throw error;
 
-  const updated = typeof data === 'number' ? data : Number(data ?? 0);
-  const now = new Date().toISOString();
+  let dbUpdated: number;
+
+  if (!rpcResult.error) {
+    dbUpdated = typeof rpcResult.data === 'number' ? rpcResult.data : Number(rpcResult.data ?? 0);
+  } else {
+    // Fallback: RPC unavailable (function ambiguity, not yet migrated, etc.).
+    // Write the client-computed sigmoid scores directly to the blocks table so
+    // the correct values survive a page reload.
+    const CHUNK = 500;
+    dbUpdated = 0;
+    for (let i = 0; i < computed.length; i += CHUNK) {
+      const chunk = computed.slice(i, i + CHUNK);
+      const { error } = await supabase
+        .from('blocks')
+        .upsert(
+          chunk.map(({ id, score }) => ({
+            id,
+            risk_score: score,
+            risk_score_updated_at: now,
+          })),
+          { onConflict: 'id' },
+        );
+      if (error) throw error;
+      dbUpdated += chunk.length;
+    }
+  }
+
+  // Patch the in-memory store so the UI reflects the new scores immediately.
   for (let i = 0; i < _blocks.length; i++) {
-    const score = calculateRiskScore(_blocks[i]);
+    const score = computed[i].score;
     _blocks[i] = {
       ..._blocks[i],
       riskScore: score,
@@ -869,7 +894,7 @@ export async function recalculateRiskScores(): Promise<{ updated: number; total:
   for (const b of _blocks) _byId.set(b.id, b);
   emit();
 
-  return { updated, total: _blocks.length };
+  return { updated: dbUpdated, total: _blocks.length };
 }
 
 export async function setBlockNote(id: string, note: string): Promise<void> {
