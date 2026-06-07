@@ -160,3 +160,10 @@ MIT, see [`LICENSE`](LICENSE). This covers the code in this repository only.
 Datasets (bd.gov.hk official records, Sentinel-1 SAR) and trained model weights
 carry their own upstream licenses; see [`honesty.md`](honesty.md) and the
 dataset notes in [`ml/cracks/README.md`](ml/cracks/README.md).
+
+
+## Demo account
+
+email: demo@demo.de
+password: demopassword
+domain: buildsight.mirzapolat.com
