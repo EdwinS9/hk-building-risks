@@ -104,3 +104,10 @@ ground settlement is a primary driver of pavement cracking). They flag candidate
 areas rather than confirmed defects. Drone and satellite computer vision is
 intended as the secondary confirmation step for these flagged areas. See
 [`honesty.md`](honesty.md).
+
+## License
+
+MIT, see [`LICENSE`](LICENSE). This covers the code in this repository only.
+Datasets (bd.gov.hk official records, Sentinel-1 SAR) and trained model weights
+carry their own upstream licenses; see [`honesty.md`](honesty.md) and the
+dataset notes in [`ml/cracks/README.md`](ml/cracks/README.md).
