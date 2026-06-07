@@ -1,7 +1,7 @@
-// Tunable sigmoid risk model parameters, persisted to the database
-// (public.score_params, single row) and mirrored to localStorage so the UI
-// can paint instantly before the DB round-trip resolves.
-// risk = 100 × sigmoid(a1(BA−30) + a2(LI−10) + a3×SAR)
+// Tunable sigmoid risk model parameters. a1–a3 are persisted to the database
+// (public.score_params, single row) and mirrored to localStorage. a4 is
+// localStorage-only until a DB migration adds the column.
+// risk = 100 × sigmoid(a1(BA−30) + a2(LI−10) + a3×SAR + a4×n_reports)
 
 import { supabase } from './supabase';
 
@@ -9,12 +9,14 @@ export interface ScoreParams {
   a1: number; // age steepness      — sensitivity of building age (yrs above 30)
   a2: number; // LI steepness       — sensitivity of inspection lag (yrs above 10)
   a3: number; // SAR relevance      — weight of the averaged SAR factor score (0–1)
+  a4: number; // reports weight     — fictional years added per resident report
 }
 
 export const SCORE_PARAM_DEFAULTS: ScoreParams = {
   a1: 0.05,
   a2: 0.10,
   a3: 3.00,
+  a4: 5.00,
 };
 
 export const SCORE_PARAM_META: {
@@ -43,6 +45,12 @@ export const SCORE_PARAM_META: {
     description: 'Weight given to the averaged SAR score (0–1 range). Set to 0 to ignore SAR entirely.',
     min: 0, max: 10, step: 0.1,
   },
+  {
+    key: 'a4',
+    label: 'a₄ — Report weight',
+    description: 'Fictional years added to the sigmoid argument per resident report. Higher values make reported buildings score worse.',
+    min: 0, max: 20, step: 0.5,
+  },
 ];
 
 const STORAGE_KEY = 'hk-brm.score-params';
@@ -57,6 +65,7 @@ function readLocal(): ScoreParams {
       a1: parsed.a1 ?? SCORE_PARAM_DEFAULTS.a1,
       a2: parsed.a2 ?? SCORE_PARAM_DEFAULTS.a2,
       a3: parsed.a3 ?? SCORE_PARAM_DEFAULTS.a3,
+      a4: parsed.a4 ?? SCORE_PARAM_DEFAULTS.a4,
     };
   } catch {
     return { ...SCORE_PARAM_DEFAULTS };
@@ -104,6 +113,7 @@ export async function loadScoreParams(): Promise<ScoreParams> {
         a1: Number(data.a1),
         a2: Number(data.a2),
         a3: Number(data.a3),
+        a4: _cached.a4, // not in DB yet; preserve from local cache
       };
       setCache(next);
       return next;

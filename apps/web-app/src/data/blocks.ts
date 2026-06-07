@@ -62,6 +62,7 @@ export interface Block {
   /** Shared free-text note. Editable by any authenticated user. */
   note: string | null;
   noteUpdatedAt: string | null;
+  reportCount: number;
 }
 
 // ─── In-memory cache (single source of truth for the UI) ───────────────────
@@ -165,6 +166,7 @@ function rowToBlock(row: BlockRow, factors?: RiskFactor[]): Block {
     status: (row.status as BlockStatus) ?? 'Not scheduled',
     note: row.note ?? null,
     noteUpdatedAt: row.note_updated_at ?? null,
+    reportCount: 0,
   };
 }
 
@@ -191,9 +193,9 @@ export async function loadBlocks(): Promise<void> {
     refreshProgress();
     emit();
 
-    // Pre-fetch scores in parallel — small dataset (one row per factor per
-    // block, capped well under PAGE_SIZE * a few). Paginate if it grows.
+    // Pre-fetch scores and report counts in parallel.
     const scoresPromise = fetchAllScores();
+    const reportCountsPromise = fetchAllReportCounts();
 
     // First page: ask for the exact total via head/count so we know how
     // many more pages to request.
@@ -268,13 +270,18 @@ export async function loadBlocks(): Promise<void> {
       emit();
     }
 
-    // Apply per-factor breakdowns once scores finish (often quicker than
-    // blocks paging, but await here to be sure).
-    const factorsByBlock = await scoresPromise;
+    // Apply per-factor breakdowns and report counts once pre-fetches finish.
+    const [factorsByBlock, reportCounts] = await Promise.all([scoresPromise, reportCountsPromise]);
     if (factorsByBlock.size > 0) {
       for (const b of _blocks) {
         const f = factorsByBlock.get(b.id);
         if (f) b.factors = f;
+      }
+    }
+    if (reportCounts.size > 0) {
+      for (const b of _blocks) {
+        const n = reportCounts.get(b.id);
+        if (n) b.reportCount = n;
       }
     }
 
@@ -311,6 +318,26 @@ function ingestRows(rows: BlockRow[]) {
     _byId.set(b.id, b);
     _loadedCount++;
   }
+}
+
+async function fetchAllReportCounts(): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  let start = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('resident_reports')
+      .select('block_id')
+      .order('block_id', { ascending: true })
+      .range(start, start + PAGE_SIZE - 1);
+    if (error) throw error;
+    const batch = (data ?? []) as { block_id: string }[];
+    for (const r of batch) {
+      counts.set(r.block_id, (counts.get(r.block_id) ?? 0) + 1);
+    }
+    if (batch.length === 0) break;
+    start += batch.length;
+  }
+  return counts;
 }
 
 async function fetchAllScores(): Promise<Map<string, RiskFactor[]>> {
@@ -821,7 +848,7 @@ function sigmoid(x: number): number {
 }
 
 function calculateRiskScore(block: Block): number {
-  const { a1, a2, a3 } = getScoreParams();
+  const { a1, a2, a3, a4 } = getScoreParams();
 
   const ba = block.completionDate
     ? (Date.now() - new Date(block.completionDate).getTime()) / MS_PER_YEAR
@@ -836,7 +863,7 @@ function calculateRiskScore(block: Block): number {
     ? factors.reduce((sum, f) => sum + f.contribution, 0) / factors.length
     : 0;
 
-  const x = a1 * (ba - 30) + a2 * (li - 10) + a3 * sar;
+  const x = a1 * (ba - 30) + a2 * (li - 10) + a3 * sar + a4 * block.reportCount;
   return Math.round(sigmoid(x) * 10000) / 100; // 2 dp, 0–100
 }
 
@@ -844,7 +871,7 @@ export async function recalculateRiskScores(): Promise<{ updated: number; total:
   // Pull the authoritative parameters from the database first so both the
   // server RPC and the client-side compute below use the saved values. This
   // also refreshes the local cache that calculateRiskScore() reads.
-  const { a1, a2, a3 } = await loadScoreParams();
+  const { a1, a2, a3, a4 } = await loadScoreParams();
   const now = new Date().toISOString();
 
   // Compute sigmoid scores client-side for all blocks upfront — needed both
@@ -853,7 +880,7 @@ export async function recalculateRiskScores(): Promise<{ updated: number; total:
 
   // Primary path: server-side RPC computes + writes all rows in one statement.
   const rpcResult = await supabase.rpc('recalculate_block_risk_scores', {
-    p_a1: a1, p_a2: a2, p_a3: a3,
+    p_a1: a1, p_a2: a2, p_a3: a3, p_a4: a4,
   });
 
   let dbUpdated: number;

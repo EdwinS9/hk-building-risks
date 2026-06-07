@@ -25,7 +25,6 @@ const OPTIONS: Option[] = [
 export default function SettingsView() {
   const pref = useSyncExternalStore(subscribeTheme, getThemePref, getThemePref);
   const resolved = useSyncExternalStore(subscribeTheme, getResolvedTheme, getResolvedTheme);
-
   return (
     <main className="page">
       <header className="page-header">
