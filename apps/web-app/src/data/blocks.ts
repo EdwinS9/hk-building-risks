@@ -5,7 +5,7 @@
 // direct Supabase calls.
 import { supabase } from '../lib/supabase';
 import { bandForScore, type RiskBand } from '../lib/constants';
-import { getScoreParams } from '../lib/scoreParams';
+import { getScoreParams, loadScoreParams } from '../lib/scoreParams';
 
 export type BlockStatus = 'Not scheduled' | 'Inspected';
 
@@ -841,7 +841,10 @@ function calculateRiskScore(block: Block): number {
 }
 
 export async function recalculateRiskScores(): Promise<{ updated: number; total: number }> {
-  const { a1, a2, a3 } = getScoreParams();
+  // Pull the authoritative parameters from the database first so both the
+  // server RPC and the client-side compute below use the saved values. This
+  // also refreshes the local cache that calculateRiskScore() reads.
+  const { a1, a2, a3 } = await loadScoreParams();
   const now = new Date().toISOString();
 
   // Compute sigmoid scores client-side for all blocks upfront — needed both

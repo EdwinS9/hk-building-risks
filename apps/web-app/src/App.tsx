@@ -11,6 +11,7 @@ import ResidentReports from './components/views/ResidentReports';
 import SettingsView from './components/views/SettingsView';
 import AccountView from './components/views/AccountView';
 import LoginScreen from './components/auth/LoginScreen';
+import AdminConsole from './components/views/AdminConsole';
 import DataLoadingScreen from './components/DataLoadingScreen';
 import { getBlocks, subscribe, getBlockById, resetBlocksCache, getLoadProgress, BLOCK_STATUSES } from './data/blocks';
 import type { BlockStatus } from './data/blocks';
@@ -22,8 +23,26 @@ import { initDbStatus } from './lib/dbStatus';
 import type { ViewKey } from './lib/views';
 import { planRoute, attachRoadGeometry, type RouteResult } from './lib/routePlanner';
 
+// Minimal path-based routing without a router dependency. The admin console
+// lives at /login — reachable only by typing the URL (no nav button links to
+// it) and still gated behind authentication.
+function usePathname(): string {
+  const [path, setPath] = useState(() => window.location.pathname);
+  useEffect(() => {
+    const onPop = () => setPath(window.location.pathname);
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  return path;
+}
+
+function isAdminPath(path: string): boolean {
+  return path === '/login' || path === '/login/';
+}
+
 export default function App() {
   const auth = useSyncExternalStore(subscribeAuth, getAuth, getAuth);
+  const path = usePathname();
 
   useEffect(() => {
     document.body.classList.add('app-body');
@@ -43,6 +62,11 @@ export default function App() {
 
   if (auth.status === 'unauthenticated') {
     return <LoginScreen />;
+  }
+
+  // Authenticated admin console — only served when the URL is /login.
+  if (isAdminPath(path)) {
+    return <AdminConsole />;
   }
 
   return <Dashboard onSignOut={() => void signOut()} />;

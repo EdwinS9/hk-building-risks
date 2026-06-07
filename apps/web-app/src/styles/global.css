@@ -1737,6 +1737,51 @@ input {
   padding: 0;
 }
 
+/* Standalone admin console (route: /login). Rendered outside the dashboard
+   shell, so it owns its own full-viewport background + the page has no TopBar
+   to clear at the top. */
+.admin-root {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg-0);
+}
+.admin-page {
+  top: 12px;
+}
+.admin-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 12px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-faint);
+  border-radius: 4px;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.admin-back-link:hover {
+  background: rgba(110, 193, 255, 0.08);
+  border-color: var(--accent-dim);
+}
+.param-save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 12px;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+}
+.param-save-saving { color: var(--text-2); }
+.param-save-saved  { color: var(--low, #3FB6B0); }
+.param-save-error  { color: var(--critical, #E84545); }
+.param-save-idle   { display: none; }
+
 .page-empty {
   flex: 1;
   display: grid;

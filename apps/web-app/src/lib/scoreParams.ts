@@ -1,5 +1,9 @@
-// Tunable sigmoid risk model parameters, persisted to localStorage.
+// Tunable sigmoid risk model parameters, persisted to the database
+// (public.score_params, single row) and mirrored to localStorage so the UI
+// can paint instantly before the DB round-trip resolves.
 // risk = 100 × sigmoid(a1(BA−30) + a2(LI−10) + a3×SAR)
+
+import { supabase } from './supabase';
 
 export interface ScoreParams {
   a1: number; // age steepness      — sensitivity of building age (yrs above 30)
@@ -44,7 +48,7 @@ export const SCORE_PARAM_META: {
 const STORAGE_KEY = 'hk-brm.score-params';
 const listeners = new Set<() => void>();
 
-function read(): ScoreParams {
+function readLocal(): ScoreParams {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...SCORE_PARAM_DEFAULTS };
@@ -59,18 +63,69 @@ function read(): ScoreParams {
   }
 }
 
-let _cached: ScoreParams = read();
+function writeLocal(p: ScoreParams): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
+  } catch {
+    /* ignore quota / disabled storage */
+  }
+}
+
+// Seed the cache from localStorage for an instant first paint; the DB load
+// (loadScoreParams) reconciles it shortly after sign-in.
+let _cached: ScoreParams = readLocal();
 
 export function getScoreParams(): ScoreParams { return _cached; }
 
-export function setScoreParams(next: ScoreParams): void {
+// Update the in-memory cache + localStorage and notify subscribers, WITHOUT
+// touching the database. Use this for high-frequency UI updates (slider drags)
+// and persist to the DB separately/debounced via setScoreParams.
+export function setScoreParamsLocal(next: ScoreParams): void {
   _cached = { ...next };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(_cached));
+  writeLocal(_cached);
   listeners.forEach(l => l());
 }
 
-export function resetScoreParams(): void {
-  setScoreParams({ ...SCORE_PARAM_DEFAULTS });
+const setCache = setScoreParamsLocal;
+
+// Fetch the authoritative parameters from the database, update the cache, and
+// return them. Falls back to the cached/local values if the row is missing or
+// the request fails (e.g. offline) so callers always get usable numbers.
+export async function loadScoreParams(): Promise<ScoreParams> {
+  try {
+    const { data, error } = await supabase
+      .from('score_params')
+      .select('a1, a2, a3')
+      .eq('id', 1)
+      .maybeSingle();
+    if (error) throw error;
+    if (data) {
+      const next: ScoreParams = {
+        a1: Number(data.a1),
+        a2: Number(data.a2),
+        a3: Number(data.a3),
+      };
+      setCache(next);
+      return next;
+    }
+  } catch {
+    /* keep cached values on failure */
+  }
+  return _cached;
+}
+
+// Persist the parameters to the database. Updates the cache immediately so the
+// UI reflects the change without waiting for the round-trip.
+export async function setScoreParams(next: ScoreParams): Promise<void> {
+  setCache(next);
+  const { error } = await supabase
+    .from('score_params')
+    .upsert({ id: 1, a1: next.a1, a2: next.a2, a3: next.a3 }, { onConflict: 'id' });
+  if (error) throw error;
+}
+
+export async function resetScoreParams(): Promise<void> {
+  await setScoreParams({ ...SCORE_PARAM_DEFAULTS });
 }
 
 export function subscribeScoreParams(listener: () => void): () => void {
