@@ -1,16 +1,34 @@
-Used tools:
+# Used tools:
 - Claude Code
 - GPT-Codex
 - Supabase.com database hosting
 - Cap Screen recorder software
 
-External Data:
+# External Data:
 - Official data from bd.gov.hk on building stock and inspections
 - Satellite SAR footage of Sentinel 1 from https://search.asf.alaska.edu/#/?zoom=10.387&center=114.071,22.224&polygon=POLYGON((114.061%2022.1476,114.3523%2022.1476,114.3523%2022.373,114.061%2022.373,114.061%2022.1476))
 
-Used Previous Work
+# Used Previous Work
 - Setup of mirzapolat.com domain and hosting
 
-Road Cracks:
+
+# Fully Functional
+- Government App
+  - Map View
+  - Report View
+  - Auth and Security
+  - Actual HK Data Used
+  - Actual Sentinel 1 SAR Data used
+  - Optimal Roundtrip planning
+- Resident App
+  - Building Selection
+  - Photo upload and Report
+- Ro
+
+# Omitted
+- Resident App:
+  - Resident Auth / Verification
+
+# Mocked
 - Crack locations are likely estimates based on InSAR velocity gradients. Drone and satellite computer vision is intended as secondary confirmation of the given areas.
 
