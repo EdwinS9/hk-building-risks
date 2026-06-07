@@ -323,3 +323,4 @@ ml/cracks/flagged/
 ml/data-analysis/insar/products/
 ml/insar/products/
 .claude/settings.json
+.claude/settings.local.json
