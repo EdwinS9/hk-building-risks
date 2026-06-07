@@ -94,4 +94,13 @@ npm run dev
 ## ML pipeline
 
 The risk scores the apps display come from `ml/`. See
-[`ml/README.md`](ml/README.md) — Python managed with [uv](https://docs.astral.sh/uv/).
+[`ml/README.md`](ml/README.md). Python managed with [uv](https://docs.astral.sh/uv/).
+
+## Road-crack layer
+
+The crack markers on the map are a heuristic for figuring out the places where
+cracks are likely to occur, derived from InSAR velocity gradients (differential
+ground settlement is a primary driver of pavement cracking). They flag candidate
+areas rather than confirmed defects. Drone and satellite computer vision is
+intended as the secondary confirmation step for these flagged areas. See
+[`honesty.md`](honesty.md).
