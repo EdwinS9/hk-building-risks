@@ -53,14 +53,7 @@ Set those up once (below), then each app gets its own `.env` from its
 
 ## Screenshots
 
-> Screenshots coming soon. Drop `dashboard.png` and `resident.png` into
-> `docs/screenshots/`, then uncomment the block below.
-
-<!--
-| Officer dashboard | Resident app |
-|---|---|
-| ![Officer triage dashboard](docs/screenshots/dashboard.png) | ![Resident reporting PWA](docs/screenshots/resident.png) |
--->
+![Officer triage dashboard](docs/screenshots/dashboard.png)
 
 ## Shared database (Supabase)
 
@@ -167,3 +160,10 @@ MIT, see [`LICENSE`](LICENSE). This covers the code in this repository only.
 Datasets (bd.gov.hk official records, Sentinel-1 SAR) and trained model weights
 carry their own upstream licenses; see [`honesty.md`](honesty.md) and the
 dataset notes in [`ml/cracks/README.md`](ml/cracks/README.md).
+
+
+## Demo account
+
+email: demo@demo.de
+password: demopassword
+domain: buildsight.mirzapolat.com
