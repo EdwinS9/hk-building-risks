@@ -39,6 +39,7 @@ import {
 } from '../../lib/scoreParams';
 import { parseInspectionsCsv, parseScoresCsv } from '../../lib/csvImport';
 import DataLoadingScreen from '../DataLoadingScreen';
+import { useConfirm } from '../ConfirmDialog';
 
 type RecalcState =
   | { phase: 'idle'; message: string }
@@ -100,6 +101,7 @@ function AdminConsoleReady() {
   const [inspectionImport, setInspectionImport] = useState<InspectionImportState>({ phase: 'idle', message: '' });
   const [matchMode, setMatchMode] = useState<ScoreMatchMode>('building_record_number');
   const [valueScale, setValueScale] = useState<ScoreValueScale>('zero_to_one');
+  const { confirm, dialog } = useConfirm();
 
   const isDefault =
     params.a1 === SCORE_PARAM_DEFAULTS.a1 &&
@@ -140,10 +142,13 @@ function AdminConsoleReady() {
 
   // ── Calculate ──────────────────────────────────────────────────────────────
   async function handleRecalculate() {
-    const ok = window.confirm(
-      `Calculate risk scores for all ${blocks.length.toLocaleString()} blocks?\n\n` +
-      `This uses the parameters saved to the database and writes a fresh risk score to every block.`,
-    );
+    const ok = await confirm({
+      title: 'Calculate risk scores',
+      message:
+        `Calculate risk scores for all ${blocks.length.toLocaleString()} blocks? ` +
+        `This uses the parameters saved to the database and writes a fresh risk score to every block.`,
+      confirmLabel: 'Calculate',
+    });
     if (!ok) return;
 
     setRecalc({ phase: 'working', message: 'Calculating risk scores…' });
@@ -272,11 +277,14 @@ function AdminConsoleReady() {
         });
         return;
       }
-      const ok = window.confirm(
-        `Import ${parsed.rows.length.toLocaleString()} inspection CSV rows?\n\n` +
-        `For every block without a matching CSV object_id/building record number, ` +
-        `the app will insert one mock inspection dated randomly between 2022-01-01 and 2026-05-01.`,
-      );
+      const ok = await confirm({
+        title: 'Import inspection log',
+        message:
+          `Import ${parsed.rows.length.toLocaleString()} inspection CSV rows? ` +
+          `For every block without a matching CSV object_id/building record number, ` +
+          `the app will insert one mock inspection dated randomly between 2022-01-01 and 2026-05-01.`,
+        confirmLabel: 'Import',
+      });
       if (!ok) {
         setInspectionImport({ phase: 'idle', message: '' });
         return;
@@ -626,6 +634,8 @@ function AdminConsoleReady() {
         </div>
       </section>
       </main>
+
+      {dialog}
     </div>
   );
 }

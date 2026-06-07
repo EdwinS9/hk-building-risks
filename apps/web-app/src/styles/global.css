@@ -1782,6 +1782,98 @@ input {
 .param-save-error  { color: var(--critical, #E84545); }
 .param-save-idle   { display: none; }
 
+/* ===== Confirm dialog (custom replacement for window.confirm) ===== */
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(2, 4, 9, 0.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms cubic-bezier(.32, .72, 0, 1);
+}
+.confirm-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.confirm-card {
+  position: relative;
+  width: min(440px, 100%);
+  padding: 24px 24px 20px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow-page, 0 20px 60px rgba(0, 0, 0, 0.5));
+  transform: translate3d(0, 10px, 0) scale(0.98);
+  opacity: 0;
+  transition: transform 200ms cubic-bezier(.32, .72, 0, 1), opacity 200ms ease;
+}
+.confirm-card.open {
+  transform: translate3d(0, 0, 0) scale(1);
+  opacity: 1;
+}
+.confirm-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+.confirm-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding-right: 28px;
+}
+.confirm-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 8px;
+  color: var(--accent);
+  background: rgba(110, 193, 255, 0.1);
+  border: 1px solid var(--accent-dim);
+}
+.confirm-icon.danger {
+  color: var(--critical);
+  background: rgba(232, 69, 69, 0.1);
+  border-color: rgba(232, 69, 69, 0.3);
+}
+.confirm-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--text-0);
+}
+.confirm-message {
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-2);
+  white-space: pre-line;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+.confirm-actions .action-btn {
+  padding: 9px 16px;
+}
+.action-btn.danger {
+  border-color: rgba(232, 69, 69, 0.4);
+  color: var(--critical);
+  background: rgba(232, 69, 69, 0.08);
+}
+.action-btn.danger:hover:not(:disabled) {
+  background: rgba(232, 69, 69, 0.16);
+}
+
 .page-empty {
   flex: 1;
   display: grid;
