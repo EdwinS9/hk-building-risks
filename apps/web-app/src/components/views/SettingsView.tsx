@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { Settings, Monitor, Moon, Sun, Contrast, Check, RotateCcw } from 'lucide-react';
+import { Settings, Monitor, Moon, Sun, Contrast, Check } from 'lucide-react';
 import {
   getThemePref,
   getResolvedTheme,
@@ -7,14 +7,6 @@ import {
   subscribeTheme,
   type ThemePref,
 } from '../../lib/theme';
-import {
-  getScoreParams,
-  setScoreParams,
-  resetScoreParams,
-  subscribeScoreParams,
-  SCORE_PARAM_META,
-  SCORE_PARAM_DEFAULTS,
-} from '../../lib/scoreParams';
 
 interface Option {
   key: ThemePref;
@@ -33,14 +25,6 @@ const OPTIONS: Option[] = [
 export default function SettingsView() {
   const pref = useSyncExternalStore(subscribeTheme, getThemePref, getThemePref);
   const resolved = useSyncExternalStore(subscribeTheme, getResolvedTheme, getResolvedTheme);
-  const params = useSyncExternalStore(subscribeScoreParams, getScoreParams, getScoreParams);
-
-  const isDefault =
-    params.a1 === SCORE_PARAM_DEFAULTS.a1 &&
-    params.a2 === SCORE_PARAM_DEFAULTS.a2 &&
-    params.a3 === SCORE_PARAM_DEFAULTS.a3 &&
-    params.a4 === SCORE_PARAM_DEFAULTS.a4;
-
   return (
     <main className="page">
       <header className="page-header">
@@ -100,54 +84,6 @@ export default function SettingsView() {
               );
             })}
           </div>
-        </div>
-
-        <div className="settings-section">
-          <div className="settings-section-head">
-            <div className="settings-section-title">Risk model</div>
-            <div className="settings-section-desc">
-              Tunable parameters for the sigmoid risk formula:
-              <code className="mono settings-formula">
-                risk = 100 × σ(a₁(BA−30) + a₂(LI−10) + a₃×SAR)
-              </code>
-              Changes apply the next time you click <strong>Calculate</strong> in the Triage Queue.
-            </div>
-          </div>
-
-          <div className="risk-param-list">
-            {SCORE_PARAM_META.map(({ key, label, description, min, max, step }) => (
-              <div key={key} className="risk-param-row">
-                <div className="risk-param-header">
-                  <span className="risk-param-label">{label}</span>
-                  <span className="risk-param-value mono">{params[key].toFixed(3)}</span>
-                </div>
-                <input
-                  type="range"
-                  className="risk-param-slider"
-                  min={min}
-                  max={max}
-                  step={step}
-                  value={params[key]}
-                  onChange={e =>
-                    setScoreParams({ ...params, [key]: parseFloat(e.target.value) })
-                  }
-                />
-                <div className="risk-param-bounds">
-                  <span>{min}</span><span>{max}</span>
-                </div>
-                <div className="risk-param-desc">{description}</div>
-              </div>
-            ))}
-          </div>
-
-          <button
-            className="risk-param-reset"
-            onClick={resetScoreParams}
-            disabled={isDefault}
-          >
-            <RotateCcw size={13} />
-            Reset to defaults
-          </button>
         </div>
 
         <div className="settings-section coming-soon">
