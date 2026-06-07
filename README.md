@@ -53,14 +53,7 @@ Set those up once (below), then each app gets its own `.env` from its
 
 ## Screenshots
 
-> Screenshots coming soon. Drop `dashboard.png` and `resident.png` into
-> `docs/screenshots/`, then uncomment the block below.
-
-<!--
-| Officer dashboard | Resident app |
-|---|---|
-| ![Officer triage dashboard](docs/screenshots/dashboard.png) | ![Resident reporting PWA](docs/screenshots/resident.png) |
--->
+![Officer triage dashboard](docs/screenshots/dashboard.png)
 
 ## Shared database (Supabase)
 
