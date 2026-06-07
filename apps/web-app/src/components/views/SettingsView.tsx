@@ -38,7 +38,8 @@ export default function SettingsView() {
   const isDefault =
     params.a1 === SCORE_PARAM_DEFAULTS.a1 &&
     params.a2 === SCORE_PARAM_DEFAULTS.a2 &&
-    params.a3 === SCORE_PARAM_DEFAULTS.a3;
+    params.a3 === SCORE_PARAM_DEFAULTS.a3 &&
+    params.a4 === SCORE_PARAM_DEFAULTS.a4;
 
   return (
     <main className="page">

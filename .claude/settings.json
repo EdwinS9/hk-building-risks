@@ -29,7 +29,10 @@
       "Bash(supabase --version)",
       "Read(//Users/magnussaurbier/.supabase/**)",
       "Bash(npx supabase *)",
-      "Bash(python3)"
+      "Bash(python3)",
+      "Bash(pg_dump --version)",
+      "Bash(brew list *)",
+      "Read(//Users/magnussaurbier/Library/Mobile Documents/iCloud~md~obsidian/Documents/Marcus/private-nonsensitive/projects/Hackathons/hk-building-risks/apps/web-app/src/data/**)"
     ]
   }
 }
