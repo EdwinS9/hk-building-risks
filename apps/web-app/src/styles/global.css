@@ -705,6 +705,7 @@ input {
 .collapse-btn {
   width: 24px;
   height: 24px;
+  padding: 0;
   background: transparent;
   border: 1px solid var(--border-faint);
   color: var(--text-2);
@@ -809,6 +810,10 @@ input {
 .triage-search input::placeholder { color: var(--text-dim); }
 
 .filter-group { padding: 0 14px 8px; }
+.band-chips { flex-wrap: nowrap; gap: 0; }
+.band-chip { flex: 1; justify-content: center; border-radius: 0; border-right-width: 0; }
+.band-chip:first-child { border-radius: 2px 0 0 2px; }
+.band-chip:last-child  { border-radius: 0 2px 2px 0; border-right-width: 1px; }
 .filter-label {
   font-size: 9px;
   letter-spacing: 0.22em;

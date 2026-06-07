@@ -10,8 +10,8 @@ import {
   CheckCircle2,
   AlertTriangle,
 } from 'lucide-react';
-import type { Block, BlockStatus } from '../data/blocks';
-import { BLOCK_STATUSES, recalculateRiskScores } from '../data/blocks';
+import type { Block } from '../data/blocks';
+import { recalculateRiskScores } from '../data/blocks';
 import { colorForBand, bandForScore, BAND_ORDER, type RiskBand } from '../lib/constants';
 
 interface Props {
@@ -24,9 +24,7 @@ interface Props {
   open: boolean;
   onToggle: () => void;
   bandFilter: Set<RiskBand>;
-  statusFilter: Set<BlockStatus>;
   onToggleBand: (b: RiskBand) => void;
-  onToggleStatus: (s: BlockStatus) => void;
 }
 
 type SortKey = 'score' | 'name' | 'district';
@@ -45,7 +43,7 @@ function formatInspectedDate(date: string): string {
 
 export default function TriageQueue({
   blocks, allBlocks, totalCount, selectedId, onSelect, onHover, open, onToggle,
-  bandFilter, statusFilter, onToggleBand, onToggleStatus,
+  bandFilter, onToggleBand,
 }: Props) {
   const [query, setQuery] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('score');
@@ -168,11 +166,11 @@ export default function TriageQueue({
 
           <div className="filter-group">
             <div className="filter-label">BAND</div>
-            <div className="chips">
-              {BAND_ORDER.map(b => (
+            <div className="chips band-chips">
+              {[...BAND_ORDER].reverse().map(b => (
                 <button
                   key={b}
-                  className={`chip ${bandFilter.has(b) ? 'on' : ''}`}
+                  className={`chip band-chip ${bandFilter.has(b) ? 'on' : ''}`}
                   onClick={() => onToggleBand(b)}
                   style={{ ['--chip-color' as any]: colorForBand(b) }}
                 >
@@ -184,21 +182,6 @@ export default function TriageQueue({
           </div>
 
           <ScoreHistogram allBlocks={allBlocks} />
-
-          <div className="filter-group">
-            <div className="filter-label">STATUS</div>
-            <div className="chips">
-              {BLOCK_STATUSES.map(s => (
-                <button
-                  key={s}
-                  className={`chip neutral ${statusFilter.has(s) ? 'on' : ''}`}
-                  onClick={() => onToggleStatus(s)}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
 
           <div className="triage-sort">
             <ArrowDownUp size={12} />
